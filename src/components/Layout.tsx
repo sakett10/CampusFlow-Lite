@@ -1,6 +1,6 @@
 
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { BookOpen, CheckSquare, LayoutDashboard } from 'lucide-react';
+import { BookOpen, CheckSquare, LayoutDashboard, Radio } from 'lucide-react';
 
 export default function Layout() {
   const location = useLocation();
@@ -8,6 +8,7 @@ export default function Layout() {
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/courses', icon: BookOpen, label: 'Courses' },
     { path: '/assignments', icon: CheckSquare, label: 'Assignments' },
+    { path: '/campus-feed', icon: Radio, label: 'Campus Feed' },
   ];
 
   return (
