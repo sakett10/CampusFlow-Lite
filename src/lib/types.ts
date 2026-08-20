@@ -1,0 +1,1 @@
+export type Course = { id: string; code: string; title: string; instructor: string; credits: number; attendedClasses: number; totalClasses: number; attendanceThreshold: number; }; export type Assignment = { id: string; courseId: string; title: string; description: string; dueDate: string; status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED'; };
