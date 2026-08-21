@@ -1,4 +1,133 @@
 @import 'tailwindcss';
 
-.hide-scrollbar::-webkit-scrollbar { display: none; }
-.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+/* -------------------------------------------------------------------------- */
+/* CampusFlow design tokens — foundation only (pages not yet migrated)        */
+/* -------------------------------------------------------------------------- */
+
+:root {
+  /* Color */
+  --cf-bg: #f7f6f3;
+  --cf-surface: #ffffff;
+  --cf-surface-muted: #f1f0ec;
+  --cf-border: #e4e2db;
+  --cf-border-strong: #cfcbc2;
+  --cf-text: #1a1917;
+  --cf-text-secondary: #5c5954;
+  --cf-text-tertiary: #8a857c;
+  --cf-brand: #1f4b43;
+  --cf-brand-hover: #173b35;
+  --cf-brand-subtle: #e7f0ee;
+  --cf-brand-fg: #ffffff;
+  --cf-ai: #2a5a72;
+  --cf-ai-subtle: #e8f1f5;
+  --cf-danger: #b42318;
+  --cf-danger-subtle: #fcebea;
+  --cf-warning: #b54708;
+  --cf-warning-subtle: #fef4e6;
+  --cf-success: #027a48;
+  --cf-success-subtle: #eaf6f0;
+  --cf-info: #175cd3;
+  --cf-info-subtle: #eff4ff;
+  --cf-overlay: rgba(26, 25, 23, 0.45);
+
+  /* Typography — system stack */
+  --cf-font-sans: ui-sans-serif, 'Segoe UI', system-ui, sans-serif;
+  --cf-font-display: ui-sans-serif, 'Segoe UI', system-ui, sans-serif;
+
+  --cf-text-display-size: 28px;
+  --cf-text-display-line: 34px;
+  --cf-text-display-weight: 600;
+
+  --cf-text-title-size: 20px;
+  --cf-text-title-line: 28px;
+  --cf-text-title-weight: 600;
+
+  --cf-text-subtitle-size: 16px;
+  --cf-text-subtitle-line: 24px;
+  --cf-text-subtitle-weight: 500;
+
+  --cf-text-body-size: 14px;
+  --cf-text-body-line: 22px;
+  --cf-text-body-weight: 400;
+
+  --cf-text-body-strong-size: 14px;
+  --cf-text-body-strong-line: 22px;
+  --cf-text-body-strong-weight: 550;
+
+  --cf-text-label-size: 12px;
+  --cf-text-label-line: 16px;
+  --cf-text-label-weight: 500;
+
+  --cf-text-caption-size: 12px;
+  --cf-text-caption-line: 16px;
+  --cf-text-caption-weight: 400;
+
+  --cf-text-micro-size: 11px;
+  --cf-text-micro-line: 14px;
+  --cf-text-micro-weight: 500;
+
+  /* Spacing — 4px scale */
+  --cf-space-1: 4px;
+  --cf-space-2: 8px;
+  --cf-space-3: 12px;
+  --cf-space-4: 16px;
+  --cf-space-5: 20px;
+  --cf-space-6: 24px;
+  --cf-space-8: 32px;
+  --cf-space-10: 40px;
+  --cf-space-12: 48px;
+
+  /* Radius */
+  --cf-radius-sm: 6px;
+  --cf-radius-md: 10px;
+  --cf-radius-lg: 14px;
+  --cf-radius-xl: 18px;
+  --cf-radius-full: 9999px;
+
+  /* Elevation / shadow */
+  --cf-elev-0: none;
+  --cf-elev-1: 0 1px 2px rgba(26, 25, 23, 0.06);
+  --cf-elev-2: 0 8px 24px rgba(26, 25, 23, 0.12);
+  --cf-elev-3: 0 12px 32px rgba(26, 25, 23, 0.16);
+}
+
+/* Functional utility still used by Campus Feed filters */
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Application shell — safe areas + mobile bottom-nav clearance */
+.cf-safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.cf-safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.cf-shell-main {
+  padding: var(--cf-space-4);
+  padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 1024px) {
+  .cf-shell-main {
+    padding: var(--cf-space-8);
+  }
+}
+
+/* Motion: honor reduced-motion preferences (spec §25) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

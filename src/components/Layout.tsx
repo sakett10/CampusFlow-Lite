@@ -1,44 +1,37 @@
-
-import { Link, Outlet, useLocation } from 'react-router-dom';
-import { BookOpen, CheckSquare, LayoutDashboard, Radio } from 'lucide-react';
+import { Outlet } from 'react-router-dom';
+import SidebarNav from './nav/SidebarNav';
+import TopBar from './nav/TopBar';
+import BottomTabNav from './nav/BottomTabNav';
 
 export default function Layout() {
-  const location = useLocation();
-  const navItems = [
-    { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
-    { path: '/courses', icon: BookOpen, label: 'Courses' },
-    { path: '/assignments', icon: CheckSquare, label: 'Assignments' },
-    { path: '/campus-feed', icon: Radio, label: 'Campus Feed' },
-  ];
-
   return (
-    <div className='flex h-screen bg-gray-50'>
-      <aside className='w-64 bg-white border-r border-gray-200'>
-        <div className='p-6'>
-          <h1 className='text-2xl font-bold text-indigo-600'>CampusFlow</h1>
+    <div className="flex h-dvh max-w-full overflow-x-hidden bg-[var(--cf-bg)] font-[family-name:var(--cf-font-sans)] text-[var(--cf-text)]">
+      {/* Desktop sidebar — fixed; main scrolls independently */}
+      <aside
+        className="fixed inset-y-0 left-0 z-30 hidden w-[240px] flex-col border-r border-[var(--cf-border)] bg-[var(--cf-surface)] lg:flex"
+        aria-label="Application"
+      >
+        <div className="px-6 py-6">
+          <p
+            className="text-[length:var(--cf-text-title-size)] leading-[var(--cf-text-title-line)] font-semibold text-[var(--cf-brand)]"
+          >
+            CampusFlow
+          </p>
         </div>
-        <nav className='mt-6'>
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = location.pathname === item.path;
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={`flex items-center px-6 py-3 text-sm font-medium ${
-                  isActive ? 'text-indigo-600 bg-indigo-50 border-r-4 border-indigo-600' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                }`}
-              >
-                <Icon className='w-5 h-5 mr-3' />
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
+        <SidebarNav />
       </aside>
-      <main className='flex-1 overflow-y-auto p-8'>
-        <Outlet />
-      </main>
+
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:pl-[240px]">
+        <div className="lg:hidden">
+          <TopBar />
+        </div>
+
+        <main className="cf-shell-main min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+          <Outlet />
+        </main>
+      </div>
+
+      <BottomTabNav />
     </div>
   );
 }
