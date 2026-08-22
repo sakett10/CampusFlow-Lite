@@ -1,10 +1,8 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import campusItemsRouter from './routes/campusItems.route';
 import aiRouter from './routes/ai.route';
-
-dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3000;

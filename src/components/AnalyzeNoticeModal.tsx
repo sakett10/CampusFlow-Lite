@@ -3,6 +3,64 @@ import { campusApi } from '../api/campusApi';
 import type { CampusItem, ItemType } from '../lib/types';
 import { Loader2, Sparkles, AlertTriangle } from 'lucide-react';
 
+const normalizeDate = (
+  value: string | null | undefined,
+  fallbackYear?: string
+): string => {
+  if (!value) return '';
+
+  // Already in HTML date format
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
+  }
+
+  // Extract dates with or without a year.
+  // Examples:
+  // "September 5, 2026"
+  // "September 5, 2026 from 2 PM to 5 PM"
+  // "September 3"
+  const match = value.match(
+    /(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:,\s+\d{4})?/i
+  );
+
+  if (!match) {
+    return '';
+  }
+
+  const parsed = match[0].match(
+    /^(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})(?:,\s+(\d{4}))?$/i
+  );
+
+  if (!parsed) {
+    return '';
+  }
+
+  const months: Record<string, string> = {
+    january: '01',
+    february: '02',
+    march: '03',
+    april: '04',
+    may: '05',
+    june: '06',
+    july: '07',
+    august: '08',
+    september: '09',
+    october: '10',
+    november: '11',
+    december: '12',
+  };
+
+  const month = months[parsed[1].toLowerCase()];
+  const day = parsed[2].padStart(2, '0');
+  const year = parsed[3] || fallbackYear;
+
+  if (!year) {
+    return '';
+  }
+
+  return `${year}-${month}-${day}`;
+};
+
 type AnalyzeNoticeModalProps = {
   isOpen: boolean;
   onClose: () => void;
@@ -27,12 +85,25 @@ export default function AnalyzeNoticeModal({ isOpen, onClose, onSave }: AnalyzeN
     setStep('ANALYZING');
     try {
       const result = await campusApi.analyzeNotice(text);
-      setFormData({
-        ...result,
-        sourceText: text,
-      });
+setFormData({
+  ...result,
+  title: result.title || null,
+  type: result.type || null,
+  description: result.description || null,
+  date: normalizeDate(result.date),
+  registrationDeadline: normalizeDate(
+    result.registrationDeadline,
+    normalizeDate(result.date).substring(0, 4)
+  ),
+  venue: result.venue || null,
+  eligibility: result.eligibility || null,
+  organizer: result.organizer || null,
+  importantActions: result.importantActions || [],
+  sourceText: text,
+});
       setStep('REVIEW');
     } catch (err: unknown) {
+      console.error("ANALYZE NOTICE FAILED:", err);
       setError(err instanceof Error ? err.message : "Analysis failed.");
       setStep('INPUT');
     }
