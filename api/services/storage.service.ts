@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { CampusItem } from '../types';
+import { CampusItem } from '../types.js';
 
 let campusItems: CampusItem[] = [];
 

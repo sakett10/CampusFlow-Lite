@@ -1,8 +1,8 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import campusItemsRouter from './routes/campusItems.route';
-import aiRouter from './routes/ai.route';
+import campusItemsRouter from './routes/campusItems.route.js';
+import aiRouter from './routes/ai.route.js';
 
 const app = express();
 
