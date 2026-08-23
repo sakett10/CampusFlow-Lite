@@ -1,30 +1,15 @@
 import { GoogleGenAI } from '@google/genai';
 
-const apiKey = process.env.GEMINI_API_KEY;
-
-
-// Mock response fallback for dev/testing when key is missing or dummy
-const getMockResponse = () => ({
-  title: "Mock Hackathon 2026",
-  type: "HACKATHON",
-  description: "A placeholder hackathon event because the API key is not configured.",
-  date: "2026-10-15",
-  registrationDeadline: "2026-10-01",
-  venue: "Main Auditorium",
-  eligibility: "All students",
-  organizer: "CS Club",
-  importantActions: ["Register online", "Form a team"]
-});
-
 export const aiService = {
   analyzeNotice: async (text: string) => {
     if (!text || text.trim() === '') {
       throw new Error("Text is required");
     }
 
+    const apiKey = process.env.GEMINI_API_KEY;
+    
     if (!apiKey) {
-      console.warn("Using mock AI response because GEMINI_API_KEY is not set or dummy.");
-      return getMockResponse();
+      throw new Error("Configuration Error: GEMINI_API_KEY is not configured in the environment variables.");
     }
 
     const ai = new GoogleGenAI({ apiKey });

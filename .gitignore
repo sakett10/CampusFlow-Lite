@@ -25,3 +25,5 @@ dist-ssr
 
 # Server environment variables
 server/.env
+
+.env
