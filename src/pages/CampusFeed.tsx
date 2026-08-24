@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useCampusFeed } from '../hooks/useCampusFeed';
-import { Sparkles, Radio } from 'lucide-react';
+import { Sparkles, Radio, Search, X } from 'lucide-react';
 import type { ItemType } from '../lib/types';
 import { sortCampusItems, type SortOption } from '../lib/eventSorting';
+import { searchCampusItems } from '../lib/eventSearch';
 import CampusItemCard from '../components/CampusItemCard';
 import AnalyzeNoticeModal from '../components/AnalyzeNoticeModal';
 import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
 import { EmptyState } from '../components/ui/EmptyState';
 
 type FilterValue = 'ALL' | ItemType;
@@ -46,11 +48,14 @@ export default function CampusFeed() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [filterType, setFilterType] = useState<FilterValue>('ALL');
   const [sortType, setSortType] = useState<SortOption>('RECENT');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const filteredItems =
     filterType === 'ALL' ? items : items.filter((item) => item.type === filterType);
 
-  const sortedAndFilteredItems = sortCampusItems(filteredItems, sortType);
+  const searchedItems = searchCampusItems(filteredItems, searchQuery);
+
+  const sortedAndFilteredItems = sortCampusItems(searchedItems, sortType);
 
   const activeFilterLabel =
     FILTERS.find((f) => f.value === filterType)?.label ?? 'All';
@@ -76,6 +81,29 @@ export default function CampusFeed() {
         >
           Analyze notice
         </Button>
+      </div>
+
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--cf-text-tertiary)] pointer-events-none" aria-hidden="true" />
+        <Input
+          type="text"
+          placeholder="Search events, venues, organizers..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-9 pr-9"
+          aria-label="Search campus feed"
+        />
+        {searchQuery && (
+          <button
+            type="button"
+            onClick={() => setSearchQuery('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--cf-text-tertiary)] hover:text-[var(--cf-text)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cf-brand)] rounded-sm"
+            aria-label="Clear search"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
+        )}
       </div>
 
       {/* Controls */}
@@ -182,19 +210,35 @@ export default function CampusFeed() {
 
       {!isLoading && !error && items.length > 0 && sortedAndFilteredItems.length === 0 && (
         <div className="flex flex-col items-center rounded-[var(--cf-radius-lg)] border border-dashed border-[var(--cf-border-strong)] bg-[var(--cf-surface)] px-6 py-14 text-center">
-          <EmptyState
-            icon={<Radio className="h-7 w-7" aria-hidden />}
-            title={`No ${activeFilterLabel} items`}
-            description="Try another filter or clear the current filter."
-            action={
-              <Button
-                variant="outline"
-                onClick={() => setFilterType('ALL')}
-              >
-                Clear filter
-              </Button>
-            }
-          />
+          {searchQuery ? (
+            <EmptyState
+              icon={<Search className="h-7 w-7" aria-hidden="true" />}
+              title={`No results for "${searchQuery}"`}
+              description="Try adjusting your search or filters to find what you're looking for."
+              action={
+                <Button
+                  variant="outline"
+                  onClick={() => setSearchQuery('')}
+                >
+                  Clear search
+                </Button>
+              }
+            />
+          ) : (
+            <EmptyState
+              icon={<Radio className="h-7 w-7" aria-hidden="true" />}
+              title={`No ${activeFilterLabel} items`}
+              description="Try another filter or clear the current filter."
+              action={
+                <Button
+                  variant="outline"
+                  onClick={() => setFilterType('ALL')}
+                >
+                  Clear filter
+                </Button>
+              }
+            />
+          )}
         </div>
       )}
 
