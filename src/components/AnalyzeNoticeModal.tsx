@@ -56,7 +56,7 @@ export default function AnalyzeNoticeModal({ isOpen, onClose, onSave }: AnalyzeN
   const [step, setStep] = useState<'INPUT' | 'ANALYZING' | 'REVIEW'>('INPUT');
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
-  
+
   const [formData, setFormData] = useState<Partial<CampusItem>>({});
 
   if (!isOpen) return null;
@@ -100,12 +100,14 @@ setFormData({
       setError("Title and Type are required.");
       return;
     }
-    
+
     onSave({
       title: formData.title,
       type: formData.type as ItemType,
       description: formData.description || null,
       date: formData.date || null,
+      startTime: formData.startTime || null,
+      endTime: formData.endTime || null,
       registrationDeadline: formData.registrationDeadline || null,
       venue: formData.venue || null,
       eligibility: formData.eligibility || null,
@@ -113,7 +115,7 @@ setFormData({
       importantActions: formData.importantActions || [],
       sourceText: text
     });
-    
+
     // Reset state
     setStep('INPUT');
     setText('');
@@ -195,7 +197,7 @@ setFormData({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {['date', 'registrationDeadline', 'venue', 'organizer', 'eligibility'].map((field) => (
+              {['date', 'startTime', 'endTime', 'registrationDeadline', 'venue', 'organizer', 'eligibility'].map((field) => (
                 <div key={field}>
                   <label className="block text-sm font-medium text-gray-700 mb-1 capitalize flex justify-between">
                     {field.replace(/([A-Z])/g, ' $1').trim()}
@@ -203,12 +205,12 @@ setFormData({
                       <span className="text-red-500 text-xs flex items-center gap-1"><AlertTriangle className="w-3 h-3"/> Missing</span>
                     )}
                   </label>
-                  <input 
-                    type={field.toLowerCase().includes('date') || field.toLowerCase().includes('deadline') ? "date" : "text"} 
-                    value={(formData[field as keyof CampusItem] as string) || ''} 
-                    onChange={e => setFormData({...formData, [field]: e.target.value || null})} 
+                  <input
+                    type={field.toLowerCase().includes('date') || field.toLowerCase().includes('deadline') ? "date" : field.toLowerCase().includes('time') ? "time" : "text"}
+                    value={(formData[field as keyof CampusItem] as string) || ''}
+                    onChange={e => setFormData({...formData, [field]: e.target.value || null})}
                     placeholder={formData[field as keyof CampusItem] === null ? "Not found in text" : ""}
-                    className={`w-full p-2 border rounded-md ${formData[field as keyof CampusItem] === null ? 'border-red-300 bg-red-50/30' : 'border-gray-300'}`} 
+                    className={`w-full p-2 border rounded-md ${formData[field as keyof CampusItem] === null ? 'border-red-300 bg-red-50/30' : 'border-gray-300'}`}
                   />
                 </div>
               ))}

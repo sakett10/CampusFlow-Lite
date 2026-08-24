@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { CampusItem, ItemType } from '../lib/types';
-import { MapPin, Calendar, Trash2, CheckCircle2 } from 'lucide-react';
-import { formatDueDate, isOverdue, isValidDateString } from '../lib/dateUtils';
+import { MapPin, Calendar, Trash2, CheckCircle2, Clock } from 'lucide-react';
+import { formatDueDate, isOverdue, isValidDateString, formatTime } from '../lib/dateUtils';
 import DeleteConfirmModal from './DeleteConfirmModal';
 
 type CampusItemCardProps = {
@@ -96,12 +96,21 @@ export default function CampusItemCard({ item, onDelete }: CampusItemCardProps) 
         )}
 
         {/* Event date / venue */}
-        {(item.date || item.venue) && (
+        {(item.date || item.venue || item.startTime) && (
           <div className="mb-3 flex flex-col gap-1.5 text-[length:var(--cf-text-body-size)] leading-[var(--cf-text-body-line)] text-[var(--cf-text-secondary)]">
             {item.date && (
               <div className="flex min-w-0 items-center gap-2">
                 <Calendar className="h-4 w-4 shrink-0 text-[var(--cf-brand)]" aria-hidden />
                 <span className="truncate">{formatDueDate(item.date)}</span>
+              </div>
+            )}
+            {item.startTime && (
+              <div className="flex min-w-0 items-center gap-2">
+                <Clock className="h-4 w-4 shrink-0 text-[var(--cf-brand)]" aria-hidden />
+                <span className="truncate">
+                  {formatTime(item.startTime)}
+                  {item.endTime ? ` – ${formatTime(item.endTime)}` : ''}
+                </span>
               </div>
             )}
             {item.venue && (

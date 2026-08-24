@@ -9,11 +9,11 @@ export function isValidDateString(dateStr: string): boolean {
 export function isOverdue(dueDateStr: string, status: string): boolean {
   if (status === 'COMPLETED') return false;
   if (!isValidDateString(dueDateStr)) return false;
-  
+
   const [year, month, day] = dueDateStr.split('-').map(Number);
   const dueDate = new Date(year, month - 1, day, 23, 59, 59, 999);
   const now = new Date();
-  
+
   return dueDate.getTime() < now.getTime();
 }
 
@@ -22,4 +22,15 @@ export function formatDueDate(dateStr: string): string {
   const [year, month, day] = dateStr.split('-').map(Number);
   const date = new Date(year, month - 1, day);
   return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+export function formatTime(timeStr: string): string {
+  if (!timeStr) return '';
+  const [hoursStr, minutesStr] = timeStr.split(':');
+  if (!hoursStr || !minutesStr) return timeStr;
+
+  const hours = parseInt(hoursStr, 10);
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  const hour12 = hours % 12 || 12;
+
+  return `${hour12}:${minutesStr} ${ampm}`;
 }

@@ -35,7 +35,16 @@ STRICT EXTRACTION RULES:
   must become:
   "5 September 2026"
 
-3. REGISTRATION DEADLINE
+3. EVENT TIME
+- Extract event times from the notice.
+- Recognize formats like: 2 PM, 2:00 PM, 14:00, 2 PM to 5 PM, 2:00 PM - 5:00 PM, 14:00-17:00, 09:00 to 16:30.
+- Normalize times to 24-hour HH:mm format (e.g. 2 PM -> "14:00", 2:30 PM -> "14:30", 5 PM -> "17:00", 09:00 -> "09:00").
+- If there is a time range, set startTime to the beginning and endTime to the ending.
+- If there is only one event time, set startTime to that time and endTime to null.
+- If there is no event time, set both to null.
+- NEVER invent a time.
+
+4. REGISTRATION DEADLINE
 - Extract the complete registration deadline.
 - Apply the same date formatting and parsing rules as EVENT DATE.
 - Normalize into a consistent human-readable format: "25 September 2026".
@@ -44,13 +53,13 @@ STRICT EXTRACTION RULES:
   "3 September 2026"
 - If the year genuinely cannot be determined, return null rather than guessing.
 
-4. TYPE
+5. TYPE
 Choose exactly one of:
 HACKATHON, WORKSHOP, EVENT, ANNOUNCEMENT, DEADLINE
 
 If unsure, choose ANNOUNCEMENT.
 
-5. IMPORTANT ACTIONS
+6. IMPORTANT ACTIONS
 List the key steps the user must take, such as:
 - Fill Google Form
 - Register online
@@ -59,12 +68,12 @@ List the key steps the user must take, such as:
 
 If there are no actions, return [].
 
-6. OTHER INFORMATION
+7. OTHER INFORMATION
 Extract venue, eligibility, organizer, title, and other fields only from information supported by the notice.
 
-7. HALLUCINATION
+8. HALLUCINATION
 If information is genuinely not present and cannot be safely inferred, return null.
-Do NOT invent dates, venues, eligibility, organizers, deadlines, or other facts.
+Do NOT invent dates, times, venues, eligibility, organizers, deadlines, or other facts.
 
 Return ONLY valid JSON matching the provided response schema.
 
@@ -88,6 +97,8 @@ ${text}
               type: { type: "STRING", nullable: true },
               description: { type: "STRING" },
               date: { type: "STRING", nullable: true },
+              startTime: { type: "STRING", nullable: true },
+              endTime: { type: "STRING", nullable: true },
               registrationDeadline: { type: "STRING", nullable: true },
               venue: { type: "STRING", nullable: true },
               eligibility: { type: "STRING", nullable: true },
