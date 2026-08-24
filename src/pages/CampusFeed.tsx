@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useCampusFeed } from '../hooks/useCampusFeed';
 import { Sparkles, Radio } from 'lucide-react';
 import type { ItemType } from '../lib/types';
+import { sortCampusItems, type SortOption } from '../lib/eventSorting';
 import CampusItemCard from '../components/CampusItemCard';
 import AnalyzeNoticeModal from '../components/AnalyzeNoticeModal';
 import { Button } from '../components/ui/Button';
@@ -44,9 +45,12 @@ export default function CampusFeed() {
   const { items, isLoading, error, addItem, deleteItem, refresh } = useCampusFeed();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [filterType, setFilterType] = useState<FilterValue>('ALL');
+  const [sortType, setSortType] = useState<SortOption>('RECENT');
 
   const filteredItems =
     filterType === 'ALL' ? items : items.filter((item) => item.type === filterType);
+
+  const sortedAndFilteredItems = sortCampusItems(filteredItems, sortType);
 
   const activeFilterLabel =
     FILTERS.find((f) => f.value === filterType)?.label ?? 'All';
@@ -74,33 +78,54 @@ export default function CampusFeed() {
         </Button>
       </div>
 
-      {/* Filters */}
-      <div
-        className="hide-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1 pb-1"
-        role="group"
-        aria-label="Filter campus items by type"
-      >
-        {FILTERS.map(({ value, label }) => {
-          const pressed = filterType === value;
-          const chipLabel =
-            value === 'ALL' ? `All (${items.length})` : label;
+      {/* Controls */}
+      <div className="flex flex-col sm:flex-row gap-4 sm:items-center justify-between">
+        {/* Filters */}
+        <div
+          className="hide-scrollbar -mx-1 flex min-w-0 gap-2 overflow-x-auto px-1 pb-1"
+          role="group"
+          aria-label="Filter campus items by type"
+        >
+          {FILTERS.map(({ value, label }) => {
+            const pressed = filterType === value;
+            const chipLabel =
+              value === 'ALL' ? `All (${items.length})` : label;
 
-          return (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={pressed}
-              onClick={() => setFilterType(value)}
-              className={`inline-flex min-h-11 shrink-0 items-center rounded-[var(--cf-radius-full)] px-4 text-[length:var(--cf-text-body-size)] leading-[var(--cf-text-body-line)] font-[number:var(--cf-text-body-strong-weight)] whitespace-nowrap transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--cf-brand)] ${
-                pressed
-                  ? 'bg-[var(--cf-brand)] text-[var(--cf-brand-fg)]'
-                  : 'border border-[var(--cf-border)] bg-[var(--cf-surface)] text-[var(--cf-text-secondary)] hover:bg-[var(--cf-surface-muted)]'
-              }`}
-            >
-              {chipLabel}
-            </button>
-          );
-        })}
+            return (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={pressed}
+                onClick={() => setFilterType(value)}
+                className={`inline-flex min-h-11 shrink-0 items-center rounded-[var(--cf-radius-full)] px-4 text-[length:var(--cf-text-body-size)] leading-[var(--cf-text-body-line)] font-[number:var(--cf-text-body-strong-weight)] whitespace-nowrap transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--cf-brand)] ${
+                  pressed
+                    ? 'bg-[var(--cf-brand)] text-[var(--cf-brand-fg)]'
+                    : 'border border-[var(--cf-border)] bg-[var(--cf-surface)] text-[var(--cf-text-secondary)] hover:bg-[var(--cf-surface-muted)]'
+                }`}
+              >
+                {chipLabel}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Sort */}
+        <div className="flex items-center gap-2 shrink-0">
+          <label htmlFor="sort-feed" className="text-[length:var(--cf-text-micro-size)] font-medium text-[var(--cf-text-secondary)] uppercase tracking-wider">
+            Sort
+          </label>
+          <select
+            id="sort-feed"
+            value={sortType}
+            onChange={(e) => setSortType(e.target.value as SortOption)}
+            className="h-10 rounded-[var(--cf-radius-md)] border border-[var(--cf-border)] bg-[var(--cf-surface)] px-3 text-[length:var(--cf-text-body-size)] font-medium text-[var(--cf-text)] transition-colors hover:border-[var(--cf-border-strong)] focus:border-[var(--cf-brand)] focus:outline-none focus:ring-1 focus:ring-[var(--cf-brand)]"
+          >
+            <option value="RECENT">Recent</option>
+            <option value="UPCOMING">Upcoming</option>
+            <option value="REGISTRATION_DEADLINE">Registration Deadline</option>
+            <option value="PAST">Past</option>
+          </select>
+        </div>
       </div>
 
       {/* Error — keep header/CTA; friendly message + retry */}
@@ -155,7 +180,7 @@ export default function CampusFeed() {
         </div>
       )}
 
-      {!isLoading && !error && items.length > 0 && filteredItems.length === 0 && (
+      {!isLoading && !error && items.length > 0 && sortedAndFilteredItems.length === 0 && (
         <div className="flex flex-col items-center rounded-[var(--cf-radius-lg)] border border-dashed border-[var(--cf-border-strong)] bg-[var(--cf-surface)] px-6 py-14 text-center">
           <EmptyState
             icon={<Radio className="h-7 w-7" aria-hidden />}
@@ -173,9 +198,9 @@ export default function CampusFeed() {
         </div>
       )}
 
-      {!isLoading && !error && filteredItems.length > 0 && (
+      {!isLoading && !error && sortedAndFilteredItems.length > 0 && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredItems.map((item) => (
+          {sortedAndFilteredItems.map((item) => (
             <CampusItemCard key={item.id} item={item} onDelete={deleteItem} />
           ))}
         </div>
