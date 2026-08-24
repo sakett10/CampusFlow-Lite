@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { CampusItem, ItemType } from '../lib/types';
 import { MapPin, Calendar, Trash2, CheckCircle2, Clock } from 'lucide-react';
 import { formatDueDate, isOverdue, isValidDateString, formatTime } from '../lib/dateUtils';
+import { getEventStatus, type EventStatus } from '../lib/eventStatus';
 import DeleteConfirmModal from './DeleteConfirmModal';
 import { Card } from './ui/Card';
 import { Badge } from './ui/Badge';
@@ -59,6 +60,23 @@ export default function CampusItemCard({ item, onDelete }: CampusItemCardProps) 
     ? getDeadlineTone(item.registrationDeadline)
     : null;
 
+  const eventStatus = getEventStatus(
+    item.date,
+    item.startTime,
+    item.endTime,
+    item.registrationDeadline
+  );
+
+  const STATUS_BADGE_CONFIG: Record<EventStatus, { label: string | null; variant: any }> = {
+    UNKNOWN: { label: null, variant: 'neutral' },
+    EVENT_ENDED: { label: 'Event Ended', variant: 'neutral' },
+    UPCOMING: { label: 'Upcoming', variant: 'neutral' },
+    REGISTRATION_OPEN: { label: 'Registration Open', variant: 'success' },
+    REGISTRATION_CLOSING_SOON: { label: 'Closing Soon', variant: 'warning' },
+  };
+
+  const statusConfig = STATUS_BADGE_CONFIG[eventStatus];
+
   const actions = item.importantActions ?? [];
   const visibleActions = actions.slice(0, 3);
   const extraActionCount = actions.length - visibleActions.length;
@@ -66,9 +84,12 @@ export default function CampusItemCard({ item, onDelete }: CampusItemCardProps) 
   return (
     <>
       <Card padding="md" className="flex flex-col transition-shadow hover:shadow-[var(--cf-elev-1)] focus-within:shadow-[var(--cf-elev-1)] h-full">
-        {/* Type badge */}
-        <div className="mb-3 flex items-start justify-between gap-3">
+        {/* Type and Status badges */}
+        <div className="mb-3 flex items-start flex-wrap gap-2">
           <Badge variant="brand">{typeLabel}</Badge>
+          {statusConfig.label && (
+            <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>
+          )}
         </div>
 
         <h3 className="mb-3 text-[length:var(--cf-text-title-size)] leading-[var(--cf-text-title-line)] font-[number:var(--cf-text-title-weight)] text-[var(--cf-text)]">
