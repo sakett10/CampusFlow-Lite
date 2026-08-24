@@ -1,24 +1,98 @@
+import pg from 'pg';
 import { randomUUID } from 'node:crypto';
-import { CampusItem } from '../types.js';
+import type { CampusItem } from '../types.js';
 
-let campusItems: CampusItem[] = [];
+const { Pool } = pg;
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+
+// We assume a table exists:
+// CREATE TABLE campus_items (
+//   id UUID PRIMARY KEY,
+//   title TEXT,
+//   type TEXT,
+//   description TEXT,
+//   date TEXT,
+//   start_time TEXT,
+//   end_time TEXT,
+//   registration_deadline TEXT,
+//   venue TEXT,
+//   eligibility TEXT,
+//   organizer TEXT,
+//   important_actions JSONB,
+//   source_text TEXT,
+//   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+// );
 
 export const storageService = {
-  getAll: () => campusItems,
-
-  add: (item: Omit<CampusItem, 'id'>): CampusItem => {
-    const newItem: CampusItem = {
-      ...item,
-      id: randomUUID(),
-    };
-
-    campusItems = [newItem, ...campusItems];
-    return newItem;
+  getAll: async (): Promise<CampusItem[]> => {
+    const { rows } = await pool.query('SELECT * FROM campus_items ORDER BY created_at DESC');
+    return rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      type: row.type,
+      description: row.description,
+      date: row.date,
+      startTime: row.start_time,
+      endTime: row.end_time,
+      registrationDeadline: row.registration_deadline,
+      venue: row.venue,
+      eligibility: row.eligibility,
+      organizer: row.organizer,
+      importantActions: row.important_actions || [],
+      sourceText: row.source_text
+    }));
   },
 
-  delete: (id: string): boolean => {
-    const initialLength = campusItems.length;
-    campusItems = campusItems.filter((item) => item.id !== id);
-    return campusItems.length < initialLength;
+  add: async (item: Omit<CampusItem, 'id'>): Promise<CampusItem> => {
+    const id = randomUUID();
+    const query = `
+      INSERT INTO campus_items (
+        id, title, type, description, date, start_time, end_time,
+        registration_deadline, venue, eligibility, organizer, important_actions, source_text
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
+      ) RETURNING *
+    `;
+    const values = [
+      id,
+      item.title,
+      item.type,
+      item.description,
+      item.date,
+      item.startTime,
+      item.endTime,
+      item.registrationDeadline,
+      item.venue,
+      item.eligibility,
+      item.organizer,
+      JSON.stringify(item.importantActions || []),
+      item.sourceText
+    ];
+
+    const { rows } = await pool.query(query, values);
+    const row = rows[0];
+    return {
+      id: row.id,
+      title: row.title,
+      type: row.type,
+      description: row.description,
+      date: row.date,
+      startTime: row.start_time,
+      endTime: row.end_time,
+      registrationDeadline: row.registration_deadline,
+      venue: row.venue,
+      eligibility: row.eligibility,
+      organizer: row.organizer,
+      importantActions: row.important_actions || [],
+      sourceText: row.source_text
+    };
+  },
+
+  delete: async (id: string): Promise<boolean> => {
+    const { rowCount } = await pool.query('DELETE FROM campus_items WHERE id = $1', [id]);
+    return (rowCount ?? 0) > 0;
   },
 };
