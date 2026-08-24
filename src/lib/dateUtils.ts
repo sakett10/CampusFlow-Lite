@@ -21,5 +21,5 @@ export function formatDueDate(dateStr: string): string {
   if (!isValidDateString(dateStr)) return 'Invalid Date';
   const [year, month, day] = dateStr.split('-').map(Number);
   const date = new Date(year, month - 1, day);
-  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 }

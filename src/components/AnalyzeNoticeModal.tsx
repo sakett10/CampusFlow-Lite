@@ -14,51 +14,36 @@ const normalizeDate = (
     return value;
   }
 
-  // Extract dates with or without a year.
-  // Examples:
-  // "September 5, 2026"
-  // "September 5, 2026 from 2 PM to 5 PM"
-  // "September 3"
-  const match = value.match(
-    /(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:,\s+\d{4})?/i
-  );
-
-  if (!match) {
-    return '';
-  }
-
-  const parsed = match[0].match(
-    /^(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})(?:,\s+(\d{4}))?$/i
-  );
-
-  if (!parsed) {
-    return '';
-  }
-
+  // Handle "DD Month YYYY" or "Month DD, YYYY" (and variations with/without year)
   const months: Record<string, string> = {
-    january: '01',
-    february: '02',
-    march: '03',
-    april: '04',
-    may: '05',
-    june: '06',
-    july: '07',
-    august: '08',
-    september: '09',
-    october: '10',
-    november: '11',
-    december: '12',
+    january: '01', february: '02', march: '03', april: '04',
+    may: '05', june: '06', july: '07', august: '08',
+    september: '09', october: '10', november: '11', december: '12',
   };
 
-  const month = months[parsed[1].toLowerCase()];
-  const day = parsed[2].padStart(2, '0');
-  const year = parsed[3] || fallbackYear;
-
-  if (!year) {
-    return '';
+  // 1. Try matching "25 September 2026"
+  const matchDDMonth = value.match(
+    /(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December)(?:\s+(\d{4}))?/i
+  );
+  if (matchDDMonth) {
+    const day = matchDDMonth[1].padStart(2, '0');
+    const month = months[matchDDMonth[2].toLowerCase()];
+    const year = matchDDMonth[3] || fallbackYear;
+    if (year) return `${year}-${month}-${day}`;
   }
 
-  return `${year}-${month}-${day}`;
+  // 2. Try matching "September 25, 2026"
+  const matchMonthDD = value.match(
+    /(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})(?:,\s+(\d{4}))?/i
+  );
+  if (matchMonthDD) {
+    const month = months[matchMonthDD[1].toLowerCase()];
+    const day = matchMonthDD[2].padStart(2, '0');
+    const year = matchMonthDD[3] || fallbackYear;
+    if (year) return `${year}-${month}-${day}`;
+  }
+
+  return '';
 };
 
 type AnalyzeNoticeModalProps = {

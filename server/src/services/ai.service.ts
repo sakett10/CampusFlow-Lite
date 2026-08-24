@@ -27,16 +27,21 @@ STRICT EXTRACTION RULES:
 2. EVENT DATE
 - Extract the event date only.
 - Remove any time or time range from the event date.
+- Explicitly recognize common campus notice date formats including: 25.9.2026, 25.09.2026, 25/09/2026, 25-09-2026, September 25, 2026, 25 September 2026.
+- Interpret ambiguous numeric dates using Indian campus convention: DD.MM.YYYY or DD/MM/YYYY, not MM/DD/YYYY.
+- Normalize extracted event dates into a consistent human-readable format: "25 September 2026".
 - Example:
   "September 5, 2026 from 2 PM to 5 PM"
   must become:
-  "September 5, 2026"
+  "5 September 2026"
 
 3. REGISTRATION DEADLINE
 - Extract the complete registration deadline.
+- Apply the same date formatting and parsing rules as EVENT DATE.
+- Normalize into a consistent human-readable format: "25 September 2026".
 - Always include the year when it can be determined from the notice.
 - If the notice says "before September 3" and the event date is in 2026, return:
-  "September 3, 2026"
+  "3 September 2026"
 - If the year genuinely cannot be determined, return null rather than guessing.
 
 4. TYPE
