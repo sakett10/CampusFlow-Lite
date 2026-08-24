@@ -4,6 +4,7 @@ import { MapPin, Calendar, Trash2, CheckCircle2, Clock } from 'lucide-react';
 import { formatDueDate, isOverdue, isValidDateString, formatTime } from '../lib/dateUtils';
 import { getEventStatus, type EventStatus } from '../lib/eventStatus';
 import DeleteConfirmModal from './DeleteConfirmModal';
+import { Link } from 'react-router-dom';
 import { Card } from './ui/Card';
 import { Badge } from './ui/Badge';
 import { Button } from './ui/Button';
@@ -177,7 +178,13 @@ export default function CampusItemCard({ item, onDelete }: CampusItemCardProps) 
         )}
 
         {/* Footer actions */}
-        <div className="mt-auto flex items-center justify-end border-t border-[var(--cf-border)] pt-3">
+        <div className="mt-auto flex items-center justify-between border-t border-[var(--cf-border)] pt-3">
+          <Link
+            to={`/campus-feed/${item.id}`}
+            className="inline-flex h-8 items-center justify-center rounded-[var(--cf-radius-md)] px-3 text-[length:var(--cf-text-body-strong-size)] font-medium text-[var(--cf-brand)] transition-colors hover:bg-[var(--cf-brand-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cf-brand)]"
+          >
+            View details
+          </Link>
           <Button
             variant="ghost"
             size="sm"
@@ -186,7 +193,7 @@ export default function CampusItemCard({ item, onDelete }: CampusItemCardProps) 
             title={`Delete ${displayTitle}`}
             className="hover:bg-[var(--cf-danger-subtle)] hover:text-[var(--cf-danger)]"
           >
-            <Trash2 className="h-4 w-4" aria-hidden />
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>
       </Card>
