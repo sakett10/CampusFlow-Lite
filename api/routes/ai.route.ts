@@ -13,7 +13,12 @@ router.post('/analyze', async (req, res) => {
     
     const result = await aiService.analyzeNotice(text);
     res.json(result);
-  } catch (error: unknown) {
+  } catch (error: any) {
+    const message = error?.message || '';
+    if (error?.status === 429 || message.includes('429') || message.includes('RESOURCE_EXHAUSTED')) {
+      res.status(429).json({ error: 'AI analysis is temporarily unavailable because the AI usage limit has been reached. Please try again later.' });
+      return;
+    }
     res.status(500).json({ error: error instanceof Error ? error.message : 'Internal Server Error' });
   }
 });
