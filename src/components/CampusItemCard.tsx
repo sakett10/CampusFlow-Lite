@@ -3,6 +3,9 @@ import type { CampusItem, ItemType } from '../lib/types';
 import { MapPin, Calendar, Trash2, CheckCircle2, Clock } from 'lucide-react';
 import { formatDueDate, isOverdue, isValidDateString, formatTime } from '../lib/dateUtils';
 import DeleteConfirmModal from './DeleteConfirmModal';
+import { Card } from './ui/Card';
+import { Badge } from './ui/Badge';
+import { Button } from './ui/Button';
 
 type CampusItemCardProps = {
   item: CampusItem;
@@ -62,18 +65,13 @@ export default function CampusItemCard({ item, onDelete }: CampusItemCardProps) 
 
   return (
     <>
-      <article
-        className="flex flex-col rounded-[var(--cf-radius-lg)] border border-[var(--cf-border)] bg-[var(--cf-surface)] p-5 transition-shadow hover:shadow-[var(--cf-elev-1)] focus-within:shadow-[var(--cf-elev-1)]"
-      >
+      <Card padding="md" className="flex flex-col transition-shadow hover:shadow-[var(--cf-elev-1)] focus-within:shadow-[var(--cf-elev-1)] h-full">
         {/* Type badge */}
         <div className="mb-3 flex items-start justify-between gap-3">
-          <span className="inline-flex items-center rounded-[var(--cf-radius-sm)] bg-[var(--cf-brand-subtle)] px-2.5 py-1 text-[length:var(--cf-text-label-size)] leading-[var(--cf-text-label-line)] font-[number:var(--cf-text-label-weight)] text-[var(--cf-brand)]">
-            {typeLabel}
-          </span>
+          <Badge variant="brand">{typeLabel}</Badge>
         </div>
 
-        {/* Title */}
-        <h3 className="mb-3 text-[length:var(--cf-text-subtitle-size)] leading-[var(--cf-text-subtitle-line)] font-[number:var(--cf-text-subtitle-weight)] text-[var(--cf-text)]">
+        <h3 className="mb-3 text-[length:var(--cf-text-title-size)] leading-[var(--cf-text-title-line)] font-[number:var(--cf-text-title-weight)] text-[var(--cf-text)]">
           {displayTitle}
         </h3>
 
@@ -159,17 +157,18 @@ export default function CampusItemCard({ item, onDelete }: CampusItemCardProps) 
 
         {/* Footer actions */}
         <div className="mt-auto flex items-center justify-end border-t border-[var(--cf-border)] pt-3">
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => setConfirmOpen(true)}
-            className="inline-flex min-h-9 min-w-9 items-center justify-center rounded-[var(--cf-radius-md)] text-[var(--cf-text-tertiary)] transition-colors hover:bg-[var(--cf-danger-subtle)] hover:text-[var(--cf-danger)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--cf-danger)]"
             aria-label={`Delete ${displayTitle}`}
             title={`Delete ${displayTitle}`}
+            className="hover:bg-[var(--cf-danger-subtle)] hover:text-[var(--cf-danger)]"
           >
             <Trash2 className="h-4 w-4" aria-hidden />
-          </button>
+          </Button>
         </div>
-      </article>
+      </Card>
 
       <DeleteConfirmModal
         isOpen={confirmOpen}

@@ -22,16 +22,16 @@ export default function Layout() {
       </aside>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:pl-[240px]">
-        <div className="lg:hidden">
+        <div className="lg:hidden shrink-0">
           <TopBar />
         </div>
 
-        <main className="cf-shell-main min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+        <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 lg:p-8">
           <Outlet />
         </main>
-      </div>
 
-      <BottomTabNav />
+        <BottomTabNav />
+      </div>
     </div>
   );
 }

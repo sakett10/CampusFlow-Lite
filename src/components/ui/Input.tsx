@@ -22,7 +22,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className={wrapperClasses}>
         {label && (
-          <label className="mb-1.5 block text-[length:var(--cf-text-body-strong-size)] font-medium text-[var(--cf-text)]">
+          <label htmlFor={props.id} className="mb-1.5 block text-[length:var(--cf-text-body-strong-size)] font-medium text-[var(--cf-text)]">
             {label}
           </label>
         )}

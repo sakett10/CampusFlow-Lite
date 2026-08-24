@@ -4,6 +4,8 @@ import { Sparkles, Radio } from 'lucide-react';
 import type { ItemType } from '../lib/types';
 import CampusItemCard from '../components/CampusItemCard';
 import AnalyzeNoticeModal from '../components/AnalyzeNoticeModal';
+import { Button } from '../components/ui/Button';
+import { EmptyState } from '../components/ui/EmptyState';
 
 type FilterValue = 'ALL' | ItemType;
 
@@ -54,23 +56,22 @@ export default function CampusFeed() {
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6 overflow-x-hidden">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between mb-2">
         <div className="min-w-0">
-          <h1 className="text-[length:var(--cf-text-display-size)] leading-[var(--cf-text-display-line)] font-[number:var(--cf-text-display-weight)] text-[var(--cf-text)]">
+          <h1 className="text-[length:var(--cf-text-display-size)] leading-tight font-bold tracking-tight text-[var(--cf-text)]">
             Campus Feed
           </h1>
-          <p className="mt-1 text-[length:var(--cf-text-body-size)] leading-[var(--cf-text-body-line)] text-[var(--cf-text-secondary)]">
+          <p className="mt-1 text-[length:var(--cf-text-subtitle-size)] text-[var(--cf-text-secondary)]">
             Structured campus opportunities
           </p>
         </div>
-        <button
-          type="button"
+        <Button
+          variant="ai"
           onClick={openAnalyze}
-          className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-[var(--cf-radius-md)] bg-[var(--cf-brand)] px-5 py-2.5 text-[length:var(--cf-text-body-strong-size)] font-[number:var(--cf-text-body-strong-weight)] text-[var(--cf-brand-fg)] transition-colors hover:bg-[var(--cf-brand-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--cf-brand)]"
+          leftIcon={<Sparkles className="h-5 w-5" aria-hidden />}
         >
-          <Sparkles className="h-5 w-5" aria-hidden />
           Analyze notice
-        </button>
+        </Button>
       </div>
 
       {/* Filters */}
@@ -111,13 +112,13 @@ export default function CampusFeed() {
           <p className="text-[length:var(--cf-text-body-strong-size)] leading-[var(--cf-text-body-strong-line)] font-[number:var(--cf-text-body-strong-weight)] text-[var(--cf-danger)]">
             Couldn&apos;t load your campus feed
           </p>
-          <button
-            type="button"
+          <Button
+            variant="outline"
             onClick={() => refresh()}
-            className="mt-3 inline-flex min-h-11 items-center rounded-[var(--cf-radius-md)] border border-[var(--cf-border)] bg-[var(--cf-surface)] px-4 text-[length:var(--cf-text-body-strong-size)] font-[number:var(--cf-text-body-strong-weight)] text-[var(--cf-text)] transition-colors hover:bg-[var(--cf-surface-muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--cf-brand)]"
+            className="mt-3"
           >
             Retry
-          </button>
+          </Button>
         </div>
       )}
 
@@ -137,42 +138,38 @@ export default function CampusFeed() {
       {/* Content states */}
       {!isLoading && !error && items.length === 0 && (
         <div className="flex flex-col items-center rounded-[var(--cf-radius-lg)] border border-dashed border-[var(--cf-border-strong)] bg-[var(--cf-surface)] px-6 py-14 text-center">
-          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[var(--cf-surface-muted)]">
-            <Radio className="h-7 w-7 text-[var(--cf-text-tertiary)]" aria-hidden />
-          </div>
-          <h2 className="mb-2 text-[length:var(--cf-text-title-size)] leading-[var(--cf-text-title-line)] font-[number:var(--cf-text-title-weight)] text-[var(--cf-text)]">
-            Your campus feed is empty
-          </h2>
-          <p className="mb-6 max-w-md text-[length:var(--cf-text-body-size)] leading-[var(--cf-text-body-line)] text-[var(--cf-text-secondary)]">
-            Turn campus notices, emails, and WhatsApp messages into structured
-            opportunities and deadlines.
-          </p>
-          <button
-            type="button"
-            onClick={openAnalyze}
-            className="inline-flex min-h-11 items-center gap-2 rounded-[var(--cf-radius-md)] bg-[var(--cf-brand)] px-5 py-2.5 text-[length:var(--cf-text-body-strong-size)] font-[number:var(--cf-text-body-strong-weight)] text-[var(--cf-brand-fg)] transition-colors hover:bg-[var(--cf-brand-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--cf-brand)]"
-          >
-            <Sparkles className="h-4 w-4" aria-hidden />
-            Analyze notice
-          </button>
+          <EmptyState
+            icon={<Radio className="h-7 w-7" aria-hidden />}
+            title="Your campus feed is empty"
+            description="Turn campus notices, emails, and WhatsApp messages into structured opportunities and deadlines."
+            action={
+              <Button
+                variant="ai"
+                onClick={openAnalyze}
+                leftIcon={<Sparkles className="h-4 w-4" aria-hidden />}
+              >
+                Analyze notice
+              </Button>
+            }
+          />
         </div>
       )}
 
       {!isLoading && !error && items.length > 0 && filteredItems.length === 0 && (
         <div className="flex flex-col items-center rounded-[var(--cf-radius-lg)] border border-dashed border-[var(--cf-border-strong)] bg-[var(--cf-surface)] px-6 py-14 text-center">
-          <h2 className="mb-2 text-[length:var(--cf-text-title-size)] leading-[var(--cf-text-title-line)] font-[number:var(--cf-text-title-weight)] text-[var(--cf-text)]">
-            No {activeFilterLabel} items
-          </h2>
-          <p className="mb-6 max-w-sm text-[length:var(--cf-text-body-size)] leading-[var(--cf-text-body-line)] text-[var(--cf-text-secondary)]">
-            Try another filter or clear the current filter.
-          </p>
-          <button
-            type="button"
-            onClick={() => setFilterType('ALL')}
-            className="inline-flex min-h-11 items-center rounded-[var(--cf-radius-md)] border border-[var(--cf-border)] bg-[var(--cf-surface)] px-5 py-2.5 text-[length:var(--cf-text-body-strong-size)] font-[number:var(--cf-text-body-strong-weight)] text-[var(--cf-text)] transition-colors hover:bg-[var(--cf-surface-muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--cf-brand)]"
-          >
-            Clear filter
-          </button>
+          <EmptyState
+            icon={<Radio className="h-7 w-7" aria-hidden />}
+            title={`No ${activeFilterLabel} items`}
+            description="Try another filter or clear the current filter."
+            action={
+              <Button
+                variant="outline"
+                onClick={() => setFilterType('ALL')}
+              >
+                Clear filter
+              </Button>
+            }
+          />
         </div>
       )}
 
