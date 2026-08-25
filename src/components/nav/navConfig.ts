@@ -9,7 +9,7 @@ export type AppNavItem = {
 
 /** Desktop order per design spec; shared with bottom tabs. */
 export const APP_NAV_ITEMS: AppNavItem[] = [
-  { path: '/', icon: LayoutDashboard, label: 'Dashboard', shortLabel: 'Dashboard' },
+  { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', shortLabel: 'Dashboard' },
   { path: '/campus-feed', icon: Radio, label: 'Campus Feed', shortLabel: 'Feed' },
   { path: '/assignments', icon: CheckSquare, label: 'Assignments', shortLabel: 'Assignments' },
   { path: '/courses', icon: BookOpen, label: 'Courses', shortLabel: 'Courses' },
