@@ -5,6 +5,7 @@ import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import CampusItemCard from '../components/CampusItemCard';
 import type { CampusItem } from '../lib/types';
+import { SignInButton, SignUpButton, useAuth } from '@clerk/clerk-react';
 
 const MOCK_ITEM: CampusItem = {
   id: 'mock-1',
@@ -23,6 +24,8 @@ const MOCK_ITEM: CampusItem = {
 };
 
 export default function LandingPage() {
+  const { isSignedIn } = useAuth();
+
   return (
     <div className="min-h-screen bg-[var(--cf-bg)] text-[var(--cf-text)] font-[family-name:var(--cf-font-sans)] selection:bg-[var(--cf-brand-subtle)] overflow-x-hidden">
       
@@ -42,9 +45,20 @@ export default function LandingPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <Link to="/dashboard" tabIndex={-1}>
-              <Button variant="primary">Open CampusFlow</Button>
-            </Link>
+            {isSignedIn ? (
+              <Link to="/dashboard" tabIndex={-1}>
+                <Button variant="primary">Open CampusFlow</Button>
+              </Link>
+            ) : (
+              <>
+                <SignInButton mode="modal">
+                  <Button variant="secondary">Sign In</Button>
+                </SignInButton>
+                <SignUpButton mode="modal">
+                  <Button variant="primary">Sign Up</Button>
+                </SignUpButton>
+              </>
+            )}
           </div>
         </div>
       </nav>
@@ -62,9 +76,15 @@ export default function LandingPage() {
             </p>
             
             <div className="flex flex-col items-center justify-center gap-4 pt-4 sm:flex-row">
-              <Link to="/dashboard" tabIndex={-1} className="w-full sm:w-auto">
-                <Button size="lg" className="w-full justify-center shadow-[var(--cf-elev-2)]">Open CampusFlow</Button>
-              </Link>
+              {isSignedIn ? (
+                <Link to="/dashboard" tabIndex={-1} className="w-full sm:w-auto">
+                  <Button size="lg" className="w-full justify-center shadow-[var(--cf-elev-2)]">Open CampusFlow</Button>
+                </Link>
+              ) : (
+                <SignUpButton mode="modal">
+                  <Button size="lg" className="w-full justify-center shadow-[var(--cf-elev-2)]">Get Started for Free</Button>
+                </SignUpButton>
+              )}
               <Link to="/campus-feed" tabIndex={-1} className="w-full sm:w-auto">
                 <Button variant="secondary" size="lg" className="w-full justify-center">Explore Campus Feed</Button>
               </Link>
@@ -227,9 +247,15 @@ export default function LandingPage() {
             <h2 className="text-4xl font-[number:var(--cf-text-display-weight)] tracking-tight text-[var(--cf-text)]">
               Your campus is full of opportunities.<br/>Don't miss them.
             </h2>
-            <Link to="/dashboard" className="inline-block">
-              <Button size="lg" className="px-12 shadow-[var(--cf-elev-2)] hover:scale-105 transition-transform duration-[var(--cf-transition-normal)]">Open CampusFlow</Button>
-            </Link>
+            {isSignedIn ? (
+              <Link to="/dashboard" className="inline-block">
+                <Button size="lg" className="px-12 shadow-[var(--cf-elev-2)] hover:scale-105 transition-transform duration-[var(--cf-transition-normal)]">Open CampusFlow</Button>
+              </Link>
+            ) : (
+              <SignUpButton mode="modal">
+                <Button size="lg" className="px-12 shadow-[var(--cf-elev-2)] hover:scale-105 transition-transform duration-[var(--cf-transition-normal)]">Get Started</Button>
+              </SignUpButton>
+            )}
           </div>
         </section>
       </main>

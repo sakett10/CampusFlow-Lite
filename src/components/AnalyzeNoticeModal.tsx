@@ -4,6 +4,7 @@ import type { CampusItem, ItemType } from '../lib/types';
 import { Loader2, Sparkles, AlertTriangle } from 'lucide-react';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
+import { useAuth } from '@clerk/clerk-react';
 
 const normalizeDate = (
   value: string | null | undefined,
@@ -58,6 +59,7 @@ export default function AnalyzeNoticeModal({ isOpen, onClose, onSave }: AnalyzeN
   const [step, setStep] = useState<'INPUT' | 'ANALYZING' | 'REVIEW'>('INPUT');
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const { getToken } = useAuth();
 
   const [formData, setFormData] = useState<Partial<CampusItem>>({});
 
@@ -71,7 +73,9 @@ export default function AnalyzeNoticeModal({ isOpen, onClose, onSave }: AnalyzeN
     setError(null);
     setStep('ANALYZING');
     try {
-      const result = await campusApi.analyzeNotice(text);
+      const token = await getToken();
+      if (!token) throw new Error('Authentication required');
+      const result = await campusApi.analyzeNotice(token, text);
 setFormData({
   ...result,
   title: result.title || null,

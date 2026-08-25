@@ -46,18 +46,19 @@ export const storageService = {
     }));
   },
 
-  add: async (item: Omit<CampusItem, 'id'>): Promise<CampusItem> => {
+  add: async (userId: string, item: Omit<CampusItem, 'id'>): Promise<CampusItem> => {
     const id = randomUUID();
     const query = `
       INSERT INTO campus_items (
-        id, title, type, description, date, start_time, end_time,
+        id, user_id, title, type, description, date, start_time, end_time,
         registration_deadline, venue, eligibility, organizer, important_actions, source_text
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
       ) RETURNING *
     `;
     const values = [
       id,
+      userId,
       item.title,
       item.type,
       item.description,
@@ -69,7 +70,7 @@ export const storageService = {
       item.eligibility,
       item.organizer,
       JSON.stringify(item.importantActions || []),
-      item.sourceText
+      item.sourceText || ''
     ];
 
     const { rows } = await pool.query(query, values);
@@ -91,8 +92,8 @@ export const storageService = {
     };
   },
 
-  delete: async (id: string): Promise<boolean> => {
-    const { rowCount } = await pool.query('DELETE FROM campus_items WHERE id = $1', [id]);
+  delete: async (userId: string, id: string): Promise<boolean> => {
+    const { rowCount } = await pool.query('DELETE FROM campus_items WHERE id = $1 AND user_id = $2', [id, userId]);
     return (rowCount ?? 0) > 0;
   },
 };

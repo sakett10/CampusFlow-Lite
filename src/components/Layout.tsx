@@ -2,6 +2,7 @@ import { Outlet } from 'react-router-dom';
 import SidebarNav from './nav/SidebarNav';
 import TopBar from './nav/TopBar';
 import BottomTabNav from './nav/BottomTabNav';
+import { UserButton } from '@clerk/clerk-react';
 
 export default function Layout() {
   return (
@@ -11,12 +12,13 @@ export default function Layout() {
         className="fixed inset-y-0 left-0 z-30 hidden w-[240px] flex-col border-r border-[var(--cf-border)] bg-[var(--cf-surface)] lg:flex"
         aria-label="Application"
       >
-        <div className="px-6 py-6">
+        <div className="px-6 py-6 flex items-center justify-between">
           <p
             className="text-[length:var(--cf-text-title-size)] leading-[var(--cf-text-title-line)] font-[number:var(--cf-text-title-weight)] tracking-tight text-[var(--cf-brand)]"
           >
             CampusFlow
           </p>
+          <UserButton />
         </div>
         <SidebarNav />
       </aside>

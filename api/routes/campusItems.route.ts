@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { storageService } from '../services/storage.service.js';
+import { getAuth } from '@clerk/express';
+import { requireAuthMiddleware } from '../middleware/requireAuth.js';
 
 const router = Router();
 
@@ -13,10 +15,13 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.post('/', async (req, res) => {
+router.post('/', requireAuthMiddleware, async (req, res) => {
   try {
-    const item = req.body;
-    const newItem = await storageService.add(item);
+    const { userId } = getAuth(req);
+    if (!userId) return res.status(401).send();
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { user_id, userId: bodyUserId, ...itemData } = req.body;
+    const newItem = await storageService.add(userId, itemData);
     res.status(201).json(newItem);
   } catch (error) {
     console.error('Failed to create campus item:', error);
@@ -24,9 +29,11 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireAuthMiddleware, async (req, res) => {
   try {
-    const success = await storageService.delete(req.params.id);
+    const { userId } = getAuth(req);
+    if (!userId) return res.status(401).send();
+    const success = await storageService.delete(userId, req.params.id);
 
     if (success) {
       res.status(204).send();

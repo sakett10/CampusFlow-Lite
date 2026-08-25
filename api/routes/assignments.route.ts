@@ -1,11 +1,14 @@
 import { Router } from 'express';
 import { assignmentsService } from '../services/assignments.service.js';
+import { getAuth } from '@clerk/express';
 
 const router = Router();
 
 router.get('/', async (req, res) => {
   try {
-    const items = await assignmentsService.getAll();
+    const { userId } = getAuth(req);
+    if (!userId) return res.status(401).send();
+    const items = await assignmentsService.getAll(userId);
     res.json(items);
   } catch (error) {
     console.error('Failed to load assignments:', error);
@@ -15,8 +18,12 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const item = req.body;
-    const newItem = await assignmentsService.add(item);
+    const { userId } = getAuth(req);
+    if (!userId) return res.status(401).send();
+    // Do not accept user_id from body
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { user_id, userId: bodyUserId, ...itemData } = req.body;
+    const newItem = await assignmentsService.add(userId, itemData);
     res.status(201).json(newItem);
   } catch (error) {
     console.error('Failed to create assignment:', error);
@@ -26,7 +33,11 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
-    const item = await assignmentsService.update(req.params.id, req.body);
+    const { userId } = getAuth(req);
+    if (!userId) return res.status(401).send();
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { user_id, userId: bodyUserId, ...itemData } = req.body;
+    const item = await assignmentsService.update(userId, req.params.id, itemData);
     if (!item) {
       res.status(404).json({ error: 'Not found' });
     } else {
@@ -40,8 +51,10 @@ router.put('/:id', async (req, res) => {
 
 router.patch('/:id/status', async (req, res) => {
   try {
+    const { userId } = getAuth(req);
+    if (!userId) return res.status(401).send();
     const { status } = req.body;
-    const item = await assignmentsService.update(req.params.id, { status });
+    const item = await assignmentsService.update(userId, req.params.id, { status });
     if (!item) {
       res.status(404).json({ error: 'Not found' });
     } else {
@@ -55,7 +68,9 @@ router.patch('/:id/status', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   try {
-    const success = await assignmentsService.delete(req.params.id);
+    const { userId } = getAuth(req);
+    if (!userId) return res.status(401).send();
+    const success = await assignmentsService.delete(userId, req.params.id);
     if (success) {
       res.status(204).send();
     } else {

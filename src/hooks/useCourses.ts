@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { Course } from '../lib/types';
+import { useAuth } from '@clerk/clerk-react';
 
 const API_URL = '/api/courses';
 
@@ -7,12 +8,18 @@ export function useCourses() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { getToken } = useAuth();
 
-  const loadCourses = async () => {
+  const loadCourses = useCallback(async () => {
     setIsLoading(true);
 
     try {
-      const response = await fetch(API_URL);
+      const token = await getToken();
+      if (!token) throw new Error('Authentication required');
+
+      const response = await fetch(API_URL, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
 
       if (!response.ok) {
         throw new Error(`Failed to load courses (${response.status})`);
@@ -29,18 +36,22 @@ export function useCourses() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [getToken]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadCourses();
-  }, []);
+  }, [loadCourses]);
 
   const addCourse = async (course: Omit<Course, 'id'>) => {
+    const token = await getToken();
+    if (!token) throw new Error('Authentication required');
+
     const response = await fetch(API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify(course),
     });
@@ -60,10 +71,14 @@ export function useCourses() {
     id: string,
     updated: Partial<Course>
   ) => {
+    const token = await getToken();
+    if (!token) throw new Error('Authentication required');
+
     const response = await fetch(`${API_URL}/${id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify(updated),
     });
@@ -84,8 +99,14 @@ export function useCourses() {
   };
 
   const deleteCourse = async (id: string) => {
+    const token = await getToken();
+    if (!token) throw new Error('Authentication required');
+
     const response = await fetch(`${API_URL}/${id}`, {
       method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      }
     });
 
     if (!response.ok) {
@@ -101,6 +122,9 @@ export function useCourses() {
     id: string,
     attended: boolean
   ) => {
+    const token = await getToken();
+    if (!token) throw new Error('Authentication required');
+
     const course = courses.find(item => item.id === id);
 
     if (!course) {
@@ -111,6 +135,7 @@ export function useCourses() {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify({
         attendedClasses:

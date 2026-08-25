@@ -1,11 +1,14 @@
 import { Router } from 'express';
 import { coursesService } from '../services/courses.service.js';
+import { getAuth } from '@clerk/express';
 
 const router = Router();
 
 router.get('/', async (req, res) => {
   try {
-    const items = await coursesService.getAll();
+    const { userId } = getAuth(req);
+    if (!userId) return res.status(401).send();
+    const items = await coursesService.getAll(userId);
     res.json(items);
   } catch (error) {
     console.error('Failed to load courses:', error);
@@ -15,18 +18,26 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const item = req.body;
-    const newItem = await coursesService.add(item);
+    const { userId } = getAuth(req);
+    if (!userId) return res.status(401).send();
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { user_id, userId: bodyUserId, ...itemData } = req.body;
+    const newItem = await coursesService.add(userId, itemData);
     res.status(201).json(newItem);
   } catch (error) {
     console.error('Failed to create course:', error);
-    res.status(500).json({ error: 'Failed to create course' });
+    const msg = error instanceof Error ? error.message : 'Failed to create course';
+    res.status(500).json({ error: msg });
   }
 });
 
 router.put('/:id', async (req, res) => {
   try {
-    const item = await coursesService.update(req.params.id, req.body);
+    const { userId } = getAuth(req);
+    if (!userId) return res.status(401).send();
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { user_id, userId: bodyUserId, ...itemData } = req.body;
+    const item = await coursesService.update(userId, req.params.id, itemData);
     if (!item) {
       res.status(404).json({ error: 'Not found' });
     } else {
@@ -40,9 +51,11 @@ router.put('/:id', async (req, res) => {
 
 router.patch('/:id/attendance', async (req, res) => {
   try {
+    const { userId } = getAuth(req);
+    if (!userId) return res.status(401).send();
     // Only expect totalClasses and attendedClasses
     const { totalClasses, attendedClasses } = req.body;
-    const item = await coursesService.update(req.params.id, { totalClasses, attendedClasses });
+    const item = await coursesService.update(userId, req.params.id, { totalClasses, attendedClasses });
     if (!item) {
       res.status(404).json({ error: 'Not found' });
     } else {
@@ -56,7 +69,9 @@ router.patch('/:id/attendance', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   try {
-    const success = await coursesService.delete(req.params.id);
+    const { userId } = getAuth(req);
+    if (!userId) return res.status(401).send();
+    const success = await coursesService.delete(userId, req.params.id);
     if (success) {
       res.status(204).send();
     } else {

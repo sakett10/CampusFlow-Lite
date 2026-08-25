@@ -2,11 +2,21 @@ import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useCourses } from './useCourses';
 
+const mockGetToken = vi.fn();
+
+vi.mock('@clerk/clerk-react', () => ({
+  useAuth: () => ({
+    getToken: mockGetToken
+  })
+}));
+
 globalThis.fetch = vi.fn();
 
 describe('useCourses hook', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+
+    mockGetToken.mockResolvedValue('fake-token');
 
     // Default GET mock
     (globalThis.fetch as Mock).mockResolvedValue({
@@ -15,7 +25,7 @@ describe('useCourses hook', () => {
     });
   });
 
-  it('initializes with empty array', async () => {
+  it('initializes with empty array and sends token', async () => {
     const { result } = renderHook(() => useCourses());
 
     // Should be loading initially
@@ -26,7 +36,21 @@ describe('useCourses hook', () => {
     });
 
     expect(result.current.courses).toEqual([]);
-    expect(globalThis.fetch).toHaveBeenCalledWith('/api/courses');
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/courses', expect.objectContaining({
+      headers: { Authorization: 'Bearer fake-token' }
+    }));
+  });
+
+  it('sets error if getToken returns null', async () => {
+    mockGetToken.mockResolvedValue(null);
+    const { result } = renderHook(() => useCourses());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.error).toBe('Authentication required');
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   it('adds and reads a course', async () => {
@@ -64,7 +88,10 @@ describe('useCourses hook', () => {
     expect(result.current.courses.length).toBe(1);
     expect(result.current.courses[0]).toEqual(mockCourse);
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/courses', expect.objectContaining({
-      method: 'POST'
+      method: 'POST',
+      headers: expect.objectContaining({
+        'Authorization': 'Bearer fake-token'
+      })
     }));
   });
 
@@ -97,7 +124,10 @@ describe('useCourses hook', () => {
 
     expect(result.current.courses[0].title).toBe('Advanced CS');
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/courses/123', expect.objectContaining({
-      method: 'PUT'
+      method: 'PUT',
+      headers: expect.objectContaining({
+        'Authorization': 'Bearer fake-token'
+      })
     }));
   });
 
@@ -125,7 +155,10 @@ describe('useCourses hook', () => {
 
     expect(result.current.courses.length).toBe(0);
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/courses/123', expect.objectContaining({
-      method: 'DELETE'
+      method: 'DELETE',
+      headers: expect.objectContaining({
+        'Authorization': 'Bearer fake-token'
+      })
     }));
   });
 
@@ -157,6 +190,9 @@ describe('useCourses hook', () => {
     expect(result.current.courses[0].totalClasses).toBe(11);
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/courses/123/attendance', expect.objectContaining({
       method: 'PATCH',
+      headers: expect.objectContaining({
+        'Authorization': 'Bearer fake-token'
+      }),
       body: JSON.stringify({ attendedClasses: 6, totalClasses: 11 })
     }));
 
@@ -174,6 +210,9 @@ describe('useCourses hook', () => {
     expect(result.current.courses[0].totalClasses).toBe(12);
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/courses/123/attendance', expect.objectContaining({
       method: 'PATCH',
+      headers: expect.objectContaining({
+        'Authorization': 'Bearer fake-token'
+      }),
       body: JSON.stringify({ attendedClasses: 6, totalClasses: 12 })
     }));
   });

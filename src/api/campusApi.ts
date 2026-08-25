@@ -6,28 +6,37 @@ export const campusApi = {
     if (!res.ok) throw new Error('Failed to fetch items');
     return res.json();
   },
-  
-  create: async (item: Omit<CampusItem, 'id'>): Promise<CampusItem> => {
+
+  create: async (token: string, item: Omit<CampusItem, 'id'>): Promise<CampusItem> => {
     const res = await fetch('/api/campus-items', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
       body: JSON.stringify(item)
     });
     if (!res.ok) throw new Error('Failed to create item');
     return res.json();
   },
 
-  delete: async (id: string): Promise<void> => {
+  delete: async (token: string, id: string): Promise<void> => {
     const res = await fetch(`/api/campus-items/${id}`, {
-      method: 'DELETE'
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
     });
     if (!res.ok) throw new Error('Failed to delete item');
   },
 
-  analyzeNotice: async (text: string): Promise<Partial<CampusItem>> => {
+  analyzeNotice: async (token: string, text: string): Promise<Partial<CampusItem>> => {
     const res = await fetch('/api/ai/analyze', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
       body: JSON.stringify({ text })
     });
     if (!res.ok) {

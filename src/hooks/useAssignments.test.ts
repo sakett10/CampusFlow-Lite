@@ -2,11 +2,21 @@ import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useAssignments } from './useAssignments';
 
+const mockGetToken = vi.fn();
+
+vi.mock('@clerk/clerk-react', () => ({
+  useAuth: () => ({
+    getToken: mockGetToken
+  })
+}));
+
 globalThis.fetch = vi.fn();
 
 describe('useAssignments hook', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+
+    mockGetToken.mockResolvedValue('fake-token');
 
     // Default GET mock
     (globalThis.fetch as Mock).mockResolvedValue({
@@ -27,7 +37,21 @@ describe('useAssignments hook', () => {
 
     expect(result.current.assignments).toEqual([]);
     expect(result.current.error).toBeNull();
-    expect(globalThis.fetch).toHaveBeenCalledWith('/api/assignments');
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/assignments', expect.objectContaining({
+      headers: { Authorization: 'Bearer fake-token' }
+    }));
+  });
+
+  it('sets error if getToken returns null', async () => {
+    mockGetToken.mockResolvedValue(null);
+    const { result } = renderHook(() => useAssignments());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.error).toBe('Authentication required');
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   it('adds and reads an assignment', async () => {
@@ -61,7 +85,10 @@ describe('useAssignments hook', () => {
     expect(result.current.assignments.length).toBe(1);
     expect(result.current.assignments[0]).toEqual(mockAssignment);
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/assignments', expect.objectContaining({
-      method: 'POST'
+      method: 'POST',
+      headers: expect.objectContaining({
+        'Authorization': 'Bearer fake-token'
+      })
     }));
   });
 
@@ -98,7 +125,10 @@ describe('useAssignments hook', () => {
 
     expect(result.current.assignments[0].title).toBe('Math Homework Final');
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/assignments/123', expect.objectContaining({
-      method: 'PUT'
+      method: 'PUT',
+      headers: expect.objectContaining({
+        'Authorization': 'Bearer fake-token'
+      })
     }));
   });
 
@@ -134,6 +164,9 @@ describe('useAssignments hook', () => {
     expect(result.current.assignments[0].status).toBe('COMPLETED');
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/assignments/123/status', expect.objectContaining({
       method: 'PATCH',
+      headers: expect.objectContaining({
+        'Authorization': 'Bearer fake-token'
+      }),
       body: JSON.stringify({ status: 'COMPLETED' })
     }));
   });
@@ -161,7 +194,10 @@ describe('useAssignments hook', () => {
 
     expect(result.current.assignments.length).toBe(0);
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/assignments/123', expect.objectContaining({
-      method: 'DELETE'
+      method: 'DELETE',
+      headers: expect.objectContaining({
+        'Authorization': 'Bearer fake-token'
+      })
     }));
   });
 
