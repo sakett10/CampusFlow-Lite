@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { CampusItem, ItemType } from '../lib/types';
-import { MapPin, Calendar, Trash2, CheckCircle2, Clock } from 'lucide-react';
+import { MapPin, Calendar, Trash2, Clock, AlertCircle } from 'lucide-react';
 import { formatDueDate, isOverdue, isValidDateString, formatTime } from '../lib/dateUtils';
 import { getEventStatus, type EventStatus } from '../lib/eventStatus';
 import DeleteConfirmModal from './DeleteConfirmModal';
@@ -78,55 +78,43 @@ export default function CampusItemCard({ item, onDelete }: CampusItemCardProps) 
 
   const statusConfig = STATUS_BADGE_CONFIG[eventStatus];
 
-  const actions = item.importantActions ?? [];
-  const visibleActions = actions.slice(0, 3);
-  const extraActionCount = actions.length - visibleActions.length;
+
 
   return (
     <>
-      <Card padding="md" className="flex flex-col transition-shadow hover:shadow-[var(--cf-elev-1)] focus-within:shadow-[var(--cf-elev-1)] h-full">
+      <Card padding="lg" className="group flex flex-col transition-all duration-200 hover:shadow-[var(--cf-elev-2)] hover:-translate-y-1 hover:border-[var(--cf-border-strong)] focus-within:shadow-[var(--cf-elev-2)] focus-within:-translate-y-1 focus-within:border-[var(--cf-border-strong)] h-full">
+
         {/* Type and Status badges */}
-        <div className="mb-3 flex items-start flex-wrap gap-2">
-          <Badge variant="brand">{typeLabel}</Badge>
+        <div className="mb-4 flex items-start justify-between gap-2">
+          <Badge variant="neutral" className="text-[length:var(--cf-text-micro-size)] font-bold tracking-wider">{typeLabel}</Badge>
           {statusConfig.label && (
-            <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>
+            <Badge variant={statusConfig.variant} className="shadow-sm">{statusConfig.label}</Badge>
           )}
         </div>
 
-        <h3 className="mb-3 text-[length:var(--cf-text-title-size)] leading-[var(--cf-text-title-line)] font-[number:var(--cf-text-title-weight)] text-[var(--cf-text)]">
+        <h3 className="mb-3 text-[length:var(--cf-text-title-size)] leading-[1.3] font-bold tracking-tight text-[var(--cf-text)] group-hover:text-[var(--cf-brand)] transition-colors line-clamp-2">
           {displayTitle}
         </h3>
 
-        {/* Registration deadline — prominent when present */}
-        {item.registrationDeadline && deadlineTone && (
-          <div
-            className={`mb-3 rounded-[var(--cf-radius-md)] border px-3 py-2 text-[length:var(--cf-text-body-strong-size)] leading-[var(--cf-text-body-strong-line)] font-[number:var(--cf-text-body-strong-weight)] ${DEADLINE_STYLES[deadlineTone]}`}
-          >
-            <span className="block text-[length:var(--cf-text-micro-size)] leading-[var(--cf-text-micro-line)] font-[number:var(--cf-text-micro-weight)] uppercase tracking-wide opacity-80">
-              Registration deadline
-            </span>
-            {formatDueDate(item.registrationDeadline)}
-            {deadlineTone === 'overdue' && (
-              <span className="ml-1.5 text-[length:var(--cf-text-caption-size)]">(overdue)</span>
-            )}
-            {deadlineTone === 'soon' && (
-              <span className="ml-1.5 text-[length:var(--cf-text-caption-size)]">(soon)</span>
-            )}
-          </div>
+        {/* Description */}
+        {item.description && (
+          <p className="mb-5 line-clamp-2 text-[length:var(--cf-text-body-size)] leading-relaxed text-[var(--cf-text-secondary)]">
+            {item.description}
+          </p>
         )}
 
         {/* Event date / venue */}
         {(item.date || item.venue || item.startTime) && (
-          <div className="mb-3 flex flex-col gap-1.5 text-[length:var(--cf-text-body-size)] leading-[var(--cf-text-body-line)] text-[var(--cf-text-secondary)]">
+          <div className="mb-6 flex flex-col gap-2.5 text-[length:var(--cf-text-body-size)] font-medium text-[var(--cf-text-secondary)]">
             {item.date && (
-              <div className="flex min-w-0 items-center gap-2">
-                <Calendar className="h-4 w-4 shrink-0 text-[var(--cf-brand)]" aria-hidden />
+              <div className="flex min-w-0 items-start gap-3">
+                <Calendar className="mt-0.5 h-4 w-4 shrink-0 text-[var(--cf-text-tertiary)]" aria-hidden />
                 <span className="truncate">{formatDueDate(item.date)}</span>
               </div>
             )}
             {item.startTime && (
-              <div className="flex min-w-0 items-center gap-2">
-                <Clock className="h-4 w-4 shrink-0 text-[var(--cf-brand)]" aria-hidden />
+              <div className="flex min-w-0 items-start gap-3">
+                <Clock className="mt-0.5 h-4 w-4 shrink-0 text-[var(--cf-text-tertiary)]" aria-hidden />
                 <span className="truncate">
                   {formatTime(item.startTime)}
                   {item.endTime ? ` – ${formatTime(item.endTime)}` : ''}
@@ -134,56 +122,44 @@ export default function CampusItemCard({ item, onDelete }: CampusItemCardProps) 
               </div>
             )}
             {item.venue && (
-              <div className="flex min-w-0 items-center gap-2">
-                <MapPin className="h-4 w-4 shrink-0 text-[var(--cf-brand)]" aria-hidden />
+              <div className="flex min-w-0 items-start gap-3">
+                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[var(--cf-text-tertiary)]" aria-hidden />
                 <span className="truncate">{item.venue}</span>
               </div>
             )}
           </div>
         )}
 
-        {/* Description */}
-        {item.description && (
-          <p className="mb-3 line-clamp-3 text-[length:var(--cf-text-body-size)] leading-[var(--cf-text-body-line)] text-[var(--cf-text-secondary)]">
-            {item.description}
-          </p>
-        )}
-
-        {/* Important actions — max 3 + overflow hint */}
-        {actions.length > 0 && (
-          <div className="mb-4 space-y-1.5">
-            <p className="text-[length:var(--cf-text-label-size)] leading-[var(--cf-text-label-line)] font-[number:var(--cf-text-label-weight)] text-[var(--cf-text-tertiary)]">
-              Important actions
-            </p>
-            <ul className="space-y-1.5">
-              {visibleActions.map((action, i) => (
-                <li
-                  key={`${i}-${action}`}
-                  className="flex items-start gap-1.5 text-[length:var(--cf-text-body-size)] leading-[var(--cf-text-body-line)] text-[var(--cf-text)]"
-                >
-                  <CheckCircle2
-                    className="mt-0.5 h-4 w-4 shrink-0 text-[var(--cf-success)]"
-                    aria-hidden
-                  />
-                  <span>{action}</span>
-                </li>
-              ))}
-            </ul>
-            {extraActionCount > 0 && (
-              <p className="pl-6 text-[length:var(--cf-text-caption-size)] leading-[var(--cf-text-caption-line)] text-[var(--cf-text-tertiary)]">
-                +{extraActionCount} more
-              </p>
-            )}
+        {/* Registration deadline */}
+        {item.registrationDeadline && deadlineTone && (
+          <div
+            className={`mb-6 flex items-start gap-3 rounded-[var(--cf-radius-md)] border px-4 py-3 text-[length:var(--cf-text-body-strong-size)] font-semibold ${DEADLINE_STYLES[deadlineTone]}`}
+          >
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 opacity-80" aria-hidden />
+            <div>
+              <span className="block text-[length:var(--cf-text-micro-size)] font-bold uppercase tracking-wider opacity-80 mb-0.5">
+                Registration Deadline
+              </span>
+              <span className="flex items-center flex-wrap gap-x-2 gap-y-1">
+                {formatDueDate(item.registrationDeadline)}
+                {deadlineTone === 'overdue' && (
+                  <Badge variant="danger" className="text-[10px] py-0 px-1.5 h-4 font-bold tracking-wider">OVERDUE</Badge>
+                )}
+                {deadlineTone === 'soon' && (
+                  <Badge variant="warning" className="text-[10px] py-0 px-1.5 h-4 font-bold tracking-wider">SOON</Badge>
+                )}
+              </span>
+            </div>
           </div>
         )}
 
         {/* Footer actions */}
-        <div className="mt-auto flex items-center justify-between border-t border-[var(--cf-border)] pt-3">
+        <div className="mt-auto flex items-center gap-3 border-t border-[var(--cf-border)] pt-4">
           <Link
             to={`/campus-feed/${item.id}`}
-            className="inline-flex h-8 items-center justify-center rounded-[var(--cf-radius-md)] px-3 text-[length:var(--cf-text-body-strong-size)] font-medium text-[var(--cf-brand)] transition-colors hover:bg-[var(--cf-brand-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cf-brand)]"
+            className="flex-1 inline-flex h-10 items-center justify-center rounded-[var(--cf-radius-md)] bg-[var(--cf-brand)] text-[length:var(--cf-text-body-strong-size)] font-semibold text-[var(--cf-brand-fg)] shadow-sm transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--cf-surface)] focus-visible:ring-[var(--cf-brand)]"
           >
-            View details
+            View Details
           </Link>
           <Button
             variant="ghost"
@@ -191,9 +167,9 @@ export default function CampusItemCard({ item, onDelete }: CampusItemCardProps) 
             onClick={() => setConfirmOpen(true)}
             aria-label={`Delete ${displayTitle}`}
             title={`Delete ${displayTitle}`}
-            className="hover:bg-[var(--cf-danger-subtle)] hover:text-[var(--cf-danger)]"
+            className="h-10 w-10 shrink-0 p-0 text-[var(--cf-text-tertiary)] hover:bg-[var(--cf-danger-subtle)] hover:text-[var(--cf-danger)]"
           >
-            <Trash2 className="h-4 w-4" aria-hidden="true" />
+            <Trash2 className="h-5 w-5" aria-hidden="true" />
           </Button>
         </div>
       </Card>
