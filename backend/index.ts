@@ -16,15 +16,40 @@ app.use(cors());
 app.use(express.json());
 
 app.use((req, _res, next) => {
-  console.log(
-    `[DEBUG] ${req.method} ${req.path} | Authorization:`,
-    req.headers.authorization ? 'PRESENT' : 'MISSING'
-  );
+  console.log({ method: req.method, url: req.url, originalUrl: req.originalUrl, path: req.path });
   next();
 });
 
-// Attach Clerk auth context globally
-app.use(clerkAuth);
+// Attach Clerk auth context globally with safe error handling
+app.use((req, res, next) => {
+  try {
+    clerkAuth(req, res, (err) => {
+      if (err) {
+        console.error('[CLERK_ERROR]', {
+          route: req.path,
+          method: req.method,
+          errorClass: err.name,
+          message: err.message,
+          secretExists: !!process.env.CLERK_SECRET_KEY,
+          authHeaderExists: !!req.headers.authorization
+        });
+        return next(err);
+      }
+      next();
+    });
+  } catch (err: unknown) {
+    const error = err as Error;
+    console.error('[CLERK_SYNC_ERROR]', {
+      route: req.path,
+      method: req.method,
+      errorClass: error.name,
+      message: error.message,
+      secretExists: !!process.env.CLERK_SECRET_KEY,
+      authHeaderExists: !!req.headers.authorization
+    });
+    next(err);
+  }
+});
 
 // Fully protected routes
 app.use('/api/courses', requireAuthMiddleware, coursesRouter);
