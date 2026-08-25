@@ -12,8 +12,13 @@ export function useCampusFeed() {
   const loadItems = useCallback(async () => {
     setIsLoading(true);
     try {
-      // GET is public, doesn't strictly need token, but we still call the api
-      const data = await campusApi.getAll();
+      const token = await getToken();
+      if (!token) {
+        setItems([]);
+        setError('Authentication required');
+        return;
+      }
+      const data = await campusApi.getAll(token);
       setItems(data);
       setError(null);
     } catch (err: unknown) {
@@ -21,7 +26,7 @@ export function useCampusFeed() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [getToken]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect

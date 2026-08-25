@@ -1,8 +1,12 @@
 import type { CampusItem } from '../lib/types';
 
 export const campusApi = {
-  getAll: async (): Promise<CampusItem[]> => {
-    const res = await fetch('/api/campus-items');
+  getAll: async (token: string): Promise<CampusItem[]> => {
+    const res = await fetch('/api/campus-items', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
     if (!res.ok) throw new Error('Failed to fetch items');
     return res.json();
   },

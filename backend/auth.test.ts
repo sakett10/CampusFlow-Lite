@@ -53,9 +53,8 @@ describe('Authentication Middleware', () => {
     expect(res.status).toBe(401);
   });
 
-  it('allows public access to Campus Items GET', async () => {
+  it('rejects unauthenticated access to Campus Items GET', async () => {
     const res = await request(app).get('/api/campus-items');
-    expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.status).toBe(401);
   });
 });

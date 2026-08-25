@@ -5,9 +5,11 @@ import { requireAuthMiddleware } from '../middleware/requireAuth.js';
 
 const router = Router();
 
-router.get('/', async (req, res) => {
+router.get('/', requireAuthMiddleware, async (req, res) => {
   try {
-    const items = await storageService.getAll();
+    const { userId } = getAuth(req);
+    if (!userId) return res.status(401).send();
+    const items = await storageService.getAll(userId);
     res.json(items);
   } catch (error) {
     console.error('Failed to load campus items:', error);

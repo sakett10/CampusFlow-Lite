@@ -59,13 +59,25 @@ describe('Campus Items Cross-User Isolation', () => {
     expect(userAItemId).toBeDefined();
   });
 
-  it('Public GET continues to work and shows item', async () => {
-    const res = await request(app).get('/api/campus-items');
+  it('Authenticated GET shows user items', async () => {
+    const res = await request(app)
+      .get('/api/campus-items')
+      .set('Authorization', 'Bearer user_A');
 
     expect(res.status).toBe(200);
     const found = res.body.find((a: { id: string, title: string }) => a.id === userAItemId);
     expect(found).toBeDefined();
     expect(found.title).toBe('User A Event');
+  });
+
+  it('User B does not see User A item', async () => {
+    const res = await request(app)
+      .get('/api/campus-items')
+      .set('Authorization', 'Bearer user_B');
+
+    expect(res.status).toBe(200);
+    const found = res.body.find((a: { id: string, title: string }) => a.id === userAItemId);
+    expect(found).toBeUndefined();
   });
 
   it('User B cannot delete User A item', async () => {
@@ -76,7 +88,9 @@ describe('Campus Items Cross-User Isolation', () => {
     expect(res.status).toBe(404);
 
     // Verify it wasn't deleted
-    const verifyRes = await request(app).get('/api/campus-items');
+    const verifyRes = await request(app)
+      .get('/api/campus-items')
+      .set('Authorization', 'Bearer user_A');
     const found = verifyRes.body.find((a: { id: string }) => a.id === userAItemId);
     expect(found).toBeDefined();
   });
@@ -96,7 +110,9 @@ describe('Campus Items Cross-User Isolation', () => {
     expect(res.status).toBe(204);
 
     // Verify it was deleted
-    const verifyRes = await request(app).get('/api/campus-items');
+    const verifyRes = await request(app)
+      .get('/api/campus-items')
+      .set('Authorization', 'Bearer user_A');
     const found = verifyRes.body.find((a: { id: string }) => a.id === userAItemId);
     expect(found).toBeUndefined();
   });
@@ -153,7 +169,9 @@ describe('Campus Items Automatic Expiration', () => {
   });
 
   it('GET /api/campus-items excludes expired events but keeps future events, grace period events, and normal notices', async () => {
-    const res = await request(app).get('/api/campus-items');
+    const res = await request(app)
+      .get('/api/campus-items')
+      .set('Authorization', 'Bearer user_A');
     expect(res.status).toBe(200);
 
     const items = res.body;

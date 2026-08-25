@@ -27,8 +27,8 @@ const pool = new Pool({
 // );
 
 export const storageService = {
-  getAll: async (): Promise<CampusItem[]> => {
-    const { rows } = await pool.query('SELECT * FROM campus_items ORDER BY created_at DESC');
+  getAll: async (userId: string): Promise<CampusItem[]> => {
+    const { rows } = await pool.query('SELECT * FROM campus_items WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
     const now = Date.now();
 
     return rows.map((row) => ({
