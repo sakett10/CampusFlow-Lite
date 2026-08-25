@@ -38,11 +38,16 @@ export function useCampusFeed() {
   };
 
   const deleteItem = async (id: string) => {
-    const token = await getToken();
-    if (!token) throw new Error('Authentication required');
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('Authentication required');
 
-    await campusApi.delete(token, id);
-    setItems(prev => prev.filter(item => item.id !== id));
+      await campusApi.delete(token, id);
+      setItems(prev => prev.filter(item => item.id !== id));
+    } catch (err: unknown) {
+      console.error('Failed to delete item:', err);
+      throw err;
+    }
   };
 
   return { items, isLoading, error, addItem, deleteItem, refresh: loadItems };

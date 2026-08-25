@@ -29,6 +29,8 @@ const pool = new Pool({
 export const storageService = {
   getAll: async (): Promise<CampusItem[]> => {
     const { rows } = await pool.query('SELECT * FROM campus_items ORDER BY created_at DESC');
+    const now = Date.now();
+
     return rows.map((row) => ({
       id: row.id,
       title: row.title,
@@ -43,7 +45,25 @@ export const storageService = {
       organizer: row.organizer,
       importantActions: row.important_actions || [],
       sourceText: row.source_text
-    }));
+    })).filter(item => {
+      if (!item.date || !item.endTime) return true;
+
+      const parts = item.date.split('-');
+      if (parts.length !== 3) return true;
+
+      const timeParts = item.endTime.split(':');
+      if (timeParts.length < 2) return true;
+
+      const [year, month, day] = parts.map(Number);
+      const [hours, minutes] = timeParts.map(Number);
+
+      if (Number.isNaN(year) || Number.isNaN(hours)) return true;
+
+      const endDate = new Date(year, month - 1, day, hours, minutes, 0, 0);
+      const expiresAt = endDate.getTime() + 60 * 60 * 1000; // end time + 1 hour
+
+      return expiresAt > now;
+    });
   },
 
   add: async (userId: string, item: Omit<CampusItem, 'id'>): Promise<CampusItem> => {
