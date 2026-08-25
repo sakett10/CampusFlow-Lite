@@ -20,13 +20,13 @@ export default function BottomTabNav() {
                 aria-current={active ? 'page' : undefined}
                 aria-label={item.label}
                 className={[
-                  'flex min-h-11 w-full min-w-0 flex-col items-center justify-center gap-0.5 px-1 transition-colors',
+                  'flex min-h-11 w-full min-w-0 flex-col items-center justify-center gap-0.5 px-1 transition-all duration-[var(--cf-transition-fast)]',
                   'focus-visible:outline-2 focus-visible:outline-[var(--cf-brand)] focus-visible:outline-offset-[-2px]',
-                  active ? 'text-[var(--cf-brand)]' : 'text-[var(--cf-text-tertiary)] hover:text-[var(--cf-text)]',
+                  active ? 'text-[var(--cf-brand)] font-bold' : 'text-[var(--cf-text-tertiary)] hover:text-[var(--cf-text)]',
                 ].join(' ')}
               >
-                <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
-                <span className="max-w-full truncate text-[length:var(--cf-text-micro-size)] leading-[var(--cf-text-micro-line)] font-medium">
+                <Icon className={`h-5 w-5 shrink-0 ${active ? 'mb-0.5' : ''} transition-all`} aria-hidden="true" />
+                <span className={`max-w-full truncate text-[length:var(--cf-text-micro-size)] leading-[var(--cf-text-micro-line)] ${active ? 'font-[number:var(--cf-text-micro-weight)]' : 'font-medium'}`}>
                   {item.shortLabel}
                 </span>
               </Link>

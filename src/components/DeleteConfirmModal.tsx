@@ -22,7 +22,7 @@ export default function DeleteConfirmModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[var(--cf-overlay)]"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[var(--cf-overlay)] transition-opacity"
       role="presentation"
       onClick={onClose}
     >
@@ -30,7 +30,7 @@ export default function DeleteConfirmModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="delete-confirm-title"
-        className="w-full max-w-sm rounded-[var(--cf-radius-lg)] border border-[var(--cf-border)] bg-[var(--cf-surface)] p-6 shadow-[var(--cf-elev-2)]"
+        className="w-full max-w-sm rounded-[var(--cf-radius-xl)] border border-[var(--cf-border)] bg-[var(--cf-surface)] p-6 shadow-[var(--cf-elev-3)] cf-animate-scale-in"
         onClick={(e) => e.stopPropagation()}
       >
         <h2

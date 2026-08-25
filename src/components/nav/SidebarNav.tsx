@@ -15,10 +15,10 @@ export default function SidebarNav() {
             to={item.path}
             aria-current={active ? 'page' : undefined}
             className={[
-              'flex min-h-11 items-center gap-3 rounded-[var(--cf-radius-md)] px-3 py-2.5 text-[length:var(--cf-text-body-strong-size)] font-medium transition-colors',
+              'flex min-h-11 items-center gap-3 rounded-[var(--cf-radius-md)] px-3 py-2.5 text-[length:var(--cf-text-body-strong-size)] font-[number:var(--cf-text-body-strong-weight)] transition-all duration-[var(--cf-transition-fast)]',
               'focus-visible:outline-2 focus-visible:outline-[var(--cf-brand)] focus-visible:outline-offset-2',
               active
-                ? 'bg-[var(--cf-surface-muted)] text-[var(--cf-text)] shadow-sm border border-[var(--cf-border-strong)]/50'
+                ? 'bg-[var(--cf-surface)] text-[var(--cf-brand)] shadow-sm border border-[var(--cf-border)] font-bold'
                 : 'border border-transparent text-[var(--cf-text-secondary)] hover:bg-[var(--cf-surface-muted)] hover:text-[var(--cf-text)]',
             ].join(' ')}
           >

@@ -25,21 +25,21 @@ const FILTERS: { value: FilterValue; label: string }[] = [
 function FeedSkeletonCard() {
   return (
     <div
-      className="flex h-full flex-col animate-pulse rounded-[var(--cf-radius-lg)] border border-[var(--cf-border)] bg-[var(--cf-surface)] p-8 shadow-[var(--cf-elev-1)]"
+      className="flex h-full flex-col rounded-[var(--cf-radius-lg)] border border-[var(--cf-border)] bg-[var(--cf-surface)] p-8 shadow-[var(--cf-elev-1)]"
       aria-hidden
     >
       <div className="mb-4 flex items-start justify-between gap-2">
-        <div className="h-5 w-20 rounded-[var(--cf-radius-sm)] bg-[var(--cf-surface-muted)]" />
-        <div className="h-5 w-24 rounded-[var(--cf-radius-sm)] bg-[var(--cf-surface-muted)]" />
+        <div className="h-5 w-20 rounded-[var(--cf-radius-sm)] cf-animate-shimmer" />
+        <div className="h-5 w-24 rounded-[var(--cf-radius-sm)] cf-animate-shimmer" />
       </div>
-      <div className="mb-5 h-6 w-3/4 rounded bg-[var(--cf-surface-muted)]" />
-      <div className="mb-6 h-10 w-full rounded bg-[var(--cf-surface-muted)]" />
-      <div className="mb-3 h-4 w-2/3 rounded bg-[var(--cf-surface-muted)]" />
-      <div className="mb-6 h-4 w-1/2 rounded bg-[var(--cf-surface-muted)]" />
+      <div className="mb-5 h-6 w-3/4 rounded cf-animate-shimmer" />
+      <div className="mb-6 h-10 w-full rounded cf-animate-shimmer" />
+      <div className="mb-3 h-4 w-2/3 rounded cf-animate-shimmer" />
+      <div className="mb-6 h-4 w-1/2 rounded cf-animate-shimmer" />
 
       <div className="mt-auto flex items-center gap-3 border-t border-[var(--cf-border)] pt-4">
-        <div className="h-10 flex-1 rounded-[var(--cf-radius-md)] bg-[var(--cf-surface-muted)]" />
-        <div className="h-10 w-10 shrink-0 rounded-[var(--cf-radius-md)] bg-[var(--cf-surface-muted)]" />
+        <div className="h-10 flex-1 rounded-[var(--cf-radius-md)] cf-animate-shimmer" />
+        <div className="h-10 w-10 shrink-0 rounded-[var(--cf-radius-md)] cf-animate-shimmer" />
       </div>
     </div>
   );

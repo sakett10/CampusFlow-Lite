@@ -10,10 +10,10 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ className = '', label, error, fullWidth = true, ...props }, ref) => {
     const wrapperClasses = fullWidth ? 'w-full' : '';
     const inputClasses = `
-      flex h-10 w-full rounded-[var(--cf-radius-md)] border border-[var(--cf-border-strong)] bg-[var(--cf-surface)] px-3 py-2 text-[length:var(--cf-text-body-size)] text-[var(--cf-text)] transition-colors
-      file:border-0 file:bg-transparent file:text-[length:var(--cf-text-body-size)] file:font-medium
+      flex h-11 w-full rounded-[var(--cf-radius-md)] border border-[var(--cf-border)] bg-[var(--cf-surface)] px-4 py-2 text-[length:var(--cf-text-body-size)] text-[var(--cf-text)] transition-all duration-[var(--cf-transition-normal)] shadow-sm hover:border-[var(--cf-border-strong)]
+      file:border-0 file:bg-transparent file:text-[length:var(--cf-text-body-size)] file:font-[number:var(--cf-text-body-weight)]
       placeholder:text-[var(--cf-text-tertiary)]
-      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cf-brand)] focus-visible:border-transparent
+      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cf-brand)] focus-visible:border-transparent focus-visible:shadow-[var(--cf-elev-2)]
       disabled:cursor-not-allowed disabled:opacity-50
       ${error ? 'border-[var(--cf-danger)] focus-visible:ring-[var(--cf-danger)]' : ''}
       ${className}

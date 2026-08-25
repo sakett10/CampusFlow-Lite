@@ -13,7 +13,7 @@ export default function Layout() {
       >
         <div className="px-6 py-6">
           <p
-            className="text-[length:var(--cf-text-title-size)] leading-[var(--cf-text-title-line)] font-semibold text-[var(--cf-brand)]"
+            className="text-[length:var(--cf-text-title-size)] leading-[var(--cf-text-title-line)] font-[number:var(--cf-text-title-weight)] tracking-tight text-[var(--cf-brand)]"
           >
             CampusFlow
           </p>

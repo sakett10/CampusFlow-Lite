@@ -134,12 +134,12 @@ setFormData({
   };
 
   return (
-    <div className="fixed inset-0 bg-[var(--cf-overlay)] flex items-center justify-center p-4 z-50">
+    <div className="fixed inset-0 bg-[var(--cf-overlay)] flex items-center justify-center p-4 z-50 transition-opacity">
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
-        className="bg-[var(--cf-surface)] rounded-[var(--cf-radius-xl)] shadow-[var(--cf-elev-3)] w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6"
+        className="bg-[var(--cf-surface)] rounded-[var(--cf-radius-xl)] shadow-[var(--cf-elev-3)] w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 cf-animate-scale-in border border-[var(--cf-border)]"
       >
         <h2 id="modal-title" className="text-[length:var(--cf-text-title-size)] font-bold text-[var(--cf-text)] mb-4 flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-[var(--cf-ai)]" aria-hidden="true" />

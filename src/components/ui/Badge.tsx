@@ -20,7 +20,7 @@ export const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(
     return (
       <span
         ref={ref}
-        className={`inline-flex items-center rounded-[var(--cf-radius-sm)] px-2 py-0.5 text-[length:var(--cf-text-micro-size)] font-semibold tracking-wide uppercase ${variants[variant]} ${className}`}
+        className={`inline-flex items-center rounded-[var(--cf-radius-sm)] px-2 py-0.5 text-[length:var(--cf-text-micro-size)] font-[number:var(--cf-text-micro-weight)] tracking-wide uppercase transition-colors duration-200 ${variants[variant]} ${className}`}
         {...props}
       >
         {children}

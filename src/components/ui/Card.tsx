@@ -16,7 +16,7 @@ export const Card = React.forwardRef<HTMLDivElement, CardProps>(
     return (
       <div
         ref={ref}
-        className={`rounded-[var(--cf-radius-lg)] border border-[var(--cf-border)] bg-[var(--cf-surface)] shadow-[var(--cf-elev-1)] ${paddings[padding]} ${className}`}
+        className={`rounded-[var(--cf-radius-lg)] border border-[var(--cf-border)] bg-[var(--cf-surface)] shadow-[var(--cf-elev-1)] transition-all duration-[var(--cf-transition-normal)] ${paddings[padding]} ${className}`}
         {...props}
       >
         {children}
