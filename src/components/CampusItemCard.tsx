@@ -6,7 +6,7 @@ import { getEventStatus, type EventStatus } from '../lib/eventStatus';
 import DeleteConfirmModal from './DeleteConfirmModal';
 import { Link } from 'react-router-dom';
 import { Card } from './ui/Card';
-import { Badge } from './ui/Badge';
+import { Badge, type BadgeVariant } from './ui/Badge';
 import { Button } from './ui/Button';
 
 type CampusItemCardProps = {
@@ -68,7 +68,7 @@ export default function CampusItemCard({ item, onDelete }: CampusItemCardProps) 
     item.registrationDeadline
   );
 
-  const STATUS_BADGE_CONFIG: Record<EventStatus, { label: string | null; variant: any }> = {
+  const STATUS_BADGE_CONFIG: Record<EventStatus, { label: string | null; variant: BadgeVariant }> = {
     UNKNOWN: { label: null, variant: 'neutral' },
     EVENT_ENDED: { label: 'Event Ended', variant: 'neutral' },
     UPCOMING: { label: 'Upcoming', variant: 'neutral' },

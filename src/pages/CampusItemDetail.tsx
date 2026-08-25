@@ -1,8 +1,8 @@
-﻿import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useCampusFeed } from '../hooks/useCampusFeed';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
-import { Badge } from '../components/ui/Badge';
+import { Badge, type BadgeVariant } from '../components/ui/Badge';
 import { ArrowLeft, MapPin, Calendar, Clock, User, CheckCircle2, AlertCircle } from 'lucide-react';
 import { formatDueDate, formatTime } from '../lib/dateUtils';
 import { getEventStatus, type EventStatus } from '../lib/eventStatus';
@@ -48,7 +48,7 @@ export default function CampusItemDetail() {
   }
 
   const eventStatus = getEventStatus(item.date, item.startTime, item.endTime, item.registrationDeadline);
-  const STATUS_BADGE_CONFIG: Record<EventStatus, { label: string | null; variant: any }> = {
+  const STATUS_BADGE_CONFIG: Record<EventStatus, { label: string | null; variant: BadgeVariant }> = {
     UNKNOWN: { label: null, variant: 'neutral' },
     EVENT_ENDED: { label: 'Event Ended', variant: 'neutral' },
     UPCOMING: { label: 'Upcoming', variant: 'neutral' },

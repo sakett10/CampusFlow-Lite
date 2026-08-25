@@ -13,9 +13,10 @@ router.post('/analyze', async (req, res) => {
     
     const result = await aiService.analyzeNotice(text);
     res.json(result);
-  } catch (error: any) {
-    const message = error?.message || '';
-    if (error?.status === 429 || message.includes('429') || message.includes('RESOURCE_EXHAUSTED')) {
+  } catch (error: unknown) {
+    const err = error as { message?: string, status?: number } | null | undefined;
+    const message = err?.message || '';
+    if (err?.status === 429 || message.includes('429') || message.includes('RESOURCE_EXHAUSTED')) {
       res.status(429).json({ error: 'AI analysis is temporarily unavailable because the AI usage limit has been reached. Please try again later.' });
       return;
     }
