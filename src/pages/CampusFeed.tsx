@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useCampusFeed } from '../hooks/useCampusFeed';
 import { Sparkles, Radio, Search, X, AlertCircle, RefreshCw } from 'lucide-react';
 import type { ItemType } from '../lib/types';
@@ -52,12 +52,12 @@ export default function CampusFeed() {
   const [sortType, setSortType] = useState<SortOption>('RECENT');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const filteredItems =
-    filterType === 'ALL' ? items : items.filter((item) => item.type === filterType);
-
-  const searchedItems = searchCampusItems(filteredItems, searchQuery);
-
-  const sortedAndFilteredItems = sortCampusItems(searchedItems, sortType);
+  const sortedAndFilteredItems = useMemo(() => {
+    const filteredItems =
+      filterType === 'ALL' ? items : items.filter((item) => item.type === filterType);
+    const searchedItems = searchCampusItems(filteredItems, searchQuery);
+    return sortCampusItems(searchedItems, sortType);
+  }, [items, filterType, searchQuery, sortType]);
 
   const activeFilterLabel =
     FILTERS.find((f) => f.value === filterType)?.label ?? 'All';

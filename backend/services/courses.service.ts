@@ -1,13 +1,6 @@
-import pg from 'pg';
+import { pool } from '../db.js';
 import { randomUUID } from 'node:crypto';
-
 import type { Course } from '../types.js';
-
-const { Pool } = pg;
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
 
 const mapRowToCourse = (row: Record<string, unknown>): Course => ({
   id: row.id as string,

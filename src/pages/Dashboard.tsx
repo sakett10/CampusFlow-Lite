@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Sparkles,
@@ -25,13 +26,12 @@ export default function Dashboard() {
   const { items: feedItems, deleteItem, isLoading: feedLoading } = useCampusFeed();
   const navigate = useNavigate();
 
-  const assignmentStats = getAssignmentStats(assignments);
-  const attendanceWarnings = getAttendanceWarnings(courses);
+  const assignmentStats = useMemo(() => getAssignmentStats(assignments), [assignments]);
+  const attendanceWarnings = useMemo(() => getAttendanceWarnings(courses), [courses]);
+  const priorityItems = useMemo(() => getPriorityItems(courses, assignments, feedItems), [courses, assignments, feedItems]);
+  const upcomingTimeline = useMemo(() => getUpcomingTimeline(courses, assignments, feedItems), [courses, assignments, feedItems]);
 
-  const priorityItems = getPriorityItems(courses, assignments, feedItems);
-  const upcomingTimeline = getUpcomingTimeline(courses, assignments, feedItems);
-
-  const recentFeedItems = feedItems.slice(0, 2);
+  const recentFeedItems = useMemo(() => feedItems.slice(0, 2), [feedItems]);
 
   // Dynamic Summary Text
   const totalActionable = priorityItems.length;

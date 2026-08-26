@@ -206,13 +206,11 @@ export const aiService = {
     }
 
     try {
-      console.log('AI provider: Gemini');
       return await analyzeWithGemini(text);
     } catch (geminiError) {
       console.error('Gemini failed, attempting Groq fallback:', geminiError);
 
       try {
-        console.log('AI provider: Groq fallback');
         return await analyzeWithGroq(text);
       } catch (groqError) {
         console.error('Groq fallback also failed:', groqError);

@@ -1,12 +1,6 @@
-import pg from 'pg';
+import { pool } from '../db.js';
 import { randomUUID } from 'node:crypto';
 import type { CampusItem } from '../types.js';
-
-const { Pool } = pg;
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
 
 // We assume a table exists:
 // CREATE TABLE campus_items (

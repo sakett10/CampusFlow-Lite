@@ -26,8 +26,7 @@ router.post('/', async (req, res) => {
     res.status(201).json(newItem);
   } catch (error) {
     console.error('Failed to create course:', error);
-    const msg = error instanceof Error ? error.message : 'Failed to create course';
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Failed to create course' });
   }
 });
 

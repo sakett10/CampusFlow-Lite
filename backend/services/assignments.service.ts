@@ -1,13 +1,7 @@
-import pg from 'pg';
+import { pool } from '../db.js';
 import { randomUUID } from 'node:crypto';
 
 import type { Assignment } from '../types.js';
-
-const { Pool } = pg;
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
 
 const mapRowToAssignment = (row: Record<string, unknown>): Assignment => ({
   id: row.id as string,
