@@ -2,6 +2,12 @@ import { describe, it, expect, vi } from 'vitest';
 import request from 'supertest';
 import type { Request, Response, NextFunction } from 'express';
 
+// Mock test database BEFORE importing app
+vi.mock('./db.js', async () => {
+  const { createTestPool } = await import('./testDb.js');
+  return { pool: createTestPool() };
+});
+
 // Mock auth before importing app
 vi.mock('@clerk/express', () => {
   return {
