@@ -216,8 +216,7 @@ export const aiService = {
         console.error('Groq fallback also failed:', groqError);
 
         throw new Error(
-          'Both AI providers are currently unavailable. Please try again later.',
-          { cause: groqError }
+          'Both AI providers are currently unavailable. Please try again later.'
         );
       }
     }
