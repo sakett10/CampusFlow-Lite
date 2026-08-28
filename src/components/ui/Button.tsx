@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'ai';
+export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'ai' | 'danger';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -27,15 +27,21 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     ref
   ) => {
     const baseStyles =
-      'inline-flex items-center justify-center font-[number:var(--cf-text-body-strong-weight)] transition-all duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cf-brand)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--cf-bg)] disabled:pointer-events-none disabled:opacity-50 whitespace-nowrap active:scale-[0.98]';
+      'inline-flex items-center justify-center font-sans-display font-semibold transition-all duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cf-brand)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--cf-bg)] disabled:pointer-events-none disabled:opacity-50 whitespace-nowrap active:scale-[0.98] cursor-pointer';
 
     const variants: Record<ButtonVariant, string> = {
-      primary: 'bg-[var(--cf-brand)] text-[var(--cf-brand-fg)] hover:bg-[var(--cf-brand-hover)] shadow-[var(--cf-elev-1)] hover:shadow-[var(--cf-elev-2)]',
-      secondary: 'bg-[var(--cf-surface-muted)] text-[var(--cf-text)] hover:bg-[var(--cf-border)]',
+      primary:
+        'bg-[var(--cf-brand)] text-[var(--cf-brand-fg)] hover:bg-[var(--cf-brand-hover)] shadow-[var(--cf-elev-brand)]',
+      secondary:
+        'bg-[var(--cf-surface-muted)] text-[var(--cf-text)] hover:bg-[var(--cf-surface-elevated)] border border-[var(--cf-border)] hover:border-[var(--cf-border-strong)]',
       outline:
-        'border border-[var(--cf-border-strong)] bg-[var(--cf-surface)] text-[var(--cf-text)] hover:bg-[var(--cf-surface-muted)]',
-      ghost: 'bg-transparent text-[var(--cf-text-secondary)] hover:bg-[var(--cf-surface-muted)] hover:text-[var(--cf-text)]',
-      ai: 'bg-[var(--cf-ai)] text-[var(--cf-ai-fg)] hover:bg-[var(--cf-ai-hover)] shadow-[var(--cf-elev-ai)] hover:shadow-[0_0_24px_rgba(139,92,246,0.4)]',
+        'border border-[var(--cf-border-strong)] bg-transparent text-[var(--cf-text)] hover:bg-[var(--cf-surface-muted)]',
+      ghost:
+        'bg-transparent text-[var(--cf-text-secondary)] hover:bg-[var(--cf-surface-muted)] hover:text-[var(--cf-text)]',
+      ai:
+        'bg-[var(--cf-ai)] text-[var(--cf-ai-fg)] hover:bg-[var(--cf-ai-hover)] shadow-[var(--cf-elev-ai)]',
+      danger:
+        'bg-[var(--cf-danger)] text-white hover:opacity-90 shadow-sm',
     };
 
     const sizes: Record<ButtonSize, string> = {

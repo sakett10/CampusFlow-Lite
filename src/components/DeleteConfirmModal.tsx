@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { motion } from 'motion/react';
+import { Button } from './ui/Button';
 
 type DeleteConfirmModalProps = {
   isOpen: boolean;
@@ -18,6 +20,17 @@ export default function DeleteConfirmModal({
 }: DeleteConfirmModalProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen && !isDeleting) {
+        setErrorMsg(null);
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, isDeleting, onClose]);
 
   if (!isOpen) return null;
 
@@ -47,52 +60,56 @@ export default function DeleteConfirmModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[var(--cf-overlay)] transition-opacity"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[var(--cf-overlay)] transition-opacity backdrop-blur-xs"
       role="presentation"
       onClick={handleClose}
     >
-      <div
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.96 }}
+        transition={{ duration: 0.18, ease: 'easeOut' }}
         role="dialog"
         aria-modal="true"
         aria-labelledby="delete-confirm-title"
-        className="w-full max-w-sm rounded-[var(--cf-radius-xl)] border border-[var(--cf-border)] bg-[var(--cf-surface)] p-6 shadow-[var(--cf-elev-3)] cf-animate-scale-in"
+        className="w-full max-w-sm rounded-2xl border border-[var(--cf-border)] bg-[var(--cf-surface)] p-6 shadow-[var(--cf-elev-3)]"
         onClick={(e) => e.stopPropagation()}
       >
         <h2
           id="delete-confirm-title"
-          className="mb-2 text-[length:var(--cf-text-title-size)] leading-[var(--cf-text-title-line)] font-[number:var(--cf-text-title-weight)] text-[var(--cf-text)]"
+          className="mb-2 font-sans-display text-base font-bold text-[var(--cf-text)]"
         >
-          Confirm deletion
+          Confirm Deletion
         </h2>
-        <p className="mb-4 text-[length:var(--cf-text-body-size)] leading-[var(--cf-text-body-line)] text-[var(--cf-text-secondary)]">
+        <p className="mb-5 text-xs text-[var(--cf-text-secondary)] leading-relaxed">
           {body}
         </p>
 
         {errorMsg && (
-          <div className="mb-4 text-sm text-[var(--cf-danger)]">
+          <div className="mb-4 text-xs text-[var(--cf-danger)] font-medium p-2.5 rounded-xl bg-[var(--cf-danger-subtle)] border border-[var(--cf-danger-border)]">
             {errorMsg}
           </div>
         )}
 
-        <div className="flex justify-end gap-3">
-          <button
-            type="button"
+        <div className="flex justify-end gap-3 pt-2">
+          <Button
+            variant="secondary"
             onClick={handleClose}
             disabled={isDeleting}
-            className="min-h-11 rounded-[var(--cf-radius-md)] bg-[var(--cf-surface-muted)] px-4 py-2 text-[length:var(--cf-text-body-strong-size)] font-[number:var(--cf-text-body-strong-weight)] text-[var(--cf-text)] transition-colors hover:bg-[var(--cf-border)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--cf-brand)] disabled:opacity-50"
+            size="sm"
           >
             Cancel
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="danger"
             onClick={handleConfirm}
             disabled={isDeleting}
-            className="min-h-11 flex items-center justify-center rounded-[var(--cf-radius-md)] bg-[var(--cf-danger)] px-4 py-2 text-[length:var(--cf-text-body-strong-size)] font-[number:var(--cf-text-body-strong-weight)] text-white transition-colors hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--cf-danger)] disabled:opacity-50 min-w-[5rem]"
+            size="sm"
           >
             {isDeleting ? 'Deleting...' : 'Delete'}
-          </button>
+          </Button>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

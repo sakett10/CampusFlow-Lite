@@ -1,4 +1,4 @@
-import { BookOpen, CheckSquare, LayoutDashboard, Radio, type LucideIcon } from 'lucide-react';
+import { BookOpen, CheckSquare, LayoutDashboard, Radio, Settings, type LucideIcon } from 'lucide-react';
 
 export type AppNavItem = {
   path: string;
@@ -13,6 +13,7 @@ export const APP_NAV_ITEMS: AppNavItem[] = [
   { path: '/campus-feed', icon: Radio, label: 'Campus Feed', shortLabel: 'Feed' },
   { path: '/assignments', icon: CheckSquare, label: 'Assignments', shortLabel: 'Assignments' },
   { path: '/courses', icon: BookOpen, label: 'Courses', shortLabel: 'Courses' },
+  { path: '/settings', icon: Settings, label: 'Settings', shortLabel: 'Settings' },
 ];
 
 export function isNavActive(pathname: string, path: string): boolean {

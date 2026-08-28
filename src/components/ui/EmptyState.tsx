@@ -10,17 +10,17 @@ export interface EmptyStateProps {
 
 export function EmptyState({ icon, title, description, action, className = '' }: EmptyStateProps) {
   return (
-    <div className={`flex flex-col items-center justify-center text-center cf-animate-enter ${className}`}>
-      <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-[var(--cf-surface-muted)] text-[var(--cf-text-tertiary)] shadow-inner ring-1 ring-[var(--cf-border)]">
+    <div className={`flex flex-col items-center justify-center text-center cf-animate-enter py-6 ${className}`}>
+      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--cf-surface-muted)] text-[var(--cf-text-secondary)] border border-[var(--cf-border)] shadow-sm">
         {icon}
       </div>
-      <h3 className="mb-2 text-[length:var(--cf-text-subtitle-size)] leading-[var(--cf-text-subtitle-line)] font-[number:var(--cf-text-subtitle-weight)] text-[var(--cf-text)]">
+      <h3 className="mb-1.5 font-sans-display text-[17px] font-semibold text-[var(--cf-text)]">
         {title}
       </h3>
-      <p className="max-w-sm text-[length:var(--cf-text-body-size)] leading-[var(--cf-text-body-line)] text-[var(--cf-text-secondary)]">
+      <p className="max-w-md font-reading text-sm leading-relaxed text-[var(--cf-text-secondary)]">
         {description}
       </p>
-      {action && <div className="mt-6">{action}</div>}
+      {action && <div className="mt-5">{action}</div>}
     </div>
   );
 }

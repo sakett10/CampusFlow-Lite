@@ -1,10 +1,14 @@
 import { useState } from 'react';
 import { Plus, CheckSquare } from 'lucide-react';
+import { motion } from 'motion/react';
 import { useAssignments } from '../hooks/useAssignments';
 import { useCourses } from '../hooks/useCourses';
 import AssignmentCard from '../components/AssignmentCard';
 import AssignmentModal from '../components/AssignmentModal';
 import DeleteConfirmModal from '../components/DeleteConfirmModal';
+import { Button } from '../components/ui/Button';
+import { EmptyState } from '../components/ui/EmptyState';
+import { Card } from '../components/ui/Card';
 import type { Assignment } from '../lib/types';
 
 export default function Assignments() {
@@ -62,17 +66,26 @@ export default function Assignments() {
   filteredAssignments.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-8 gap-4">
+    <motion.div 
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: 'easeOut' }}
+      className="max-w-6xl mx-auto space-y-6 pb-12"
+    >
+      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 border-b border-[var(--cf-border-subtle)] pb-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Assignments</h1>
-          <p className="text-gray-500 mt-1">Track your tasks, homework, and exams.</p>
+          <h1 className="font-sans-display text-[length:var(--cf-text-display-size)] leading-tight font-bold text-[var(--cf-text)]">
+            Assignments
+          </h1>
+          <p className="text-[length:var(--cf-text-subtitle-size)] text-[var(--cf-text-secondary)] mt-1">
+            Track coursework, deadlines, exams, and project submissions.
+          </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <select 
             value={filterCourseId}
             onChange={(e) => setFilterCourseId(e.target.value)}
-            className="p-2.5 bg-white border border-gray-300 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none"
+            className="h-10 px-3 bg-[var(--cf-surface)] border border-[var(--cf-border)] rounded-xl text-xs font-medium text-[var(--cf-text)] focus:ring-2 focus:ring-[var(--cf-brand)] outline-none cursor-pointer"
           >
             <option value="ALL">All Courses</option>
             {courses.map(c => <option key={c.id} value={c.id}>{c.code}</option>)}
@@ -80,44 +93,47 @@ export default function Assignments() {
           <select 
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="p-2.5 bg-white border border-gray-300 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none"
+            className="h-10 px-3 bg-[var(--cf-surface)] border border-[var(--cf-border)] rounded-xl text-xs font-medium text-[var(--cf-text)] focus:ring-2 focus:ring-[var(--cf-brand)] outline-none cursor-pointer"
           >
             <option value="ALL">All Statuses</option>
             <option value="PENDING">Pending</option>
             <option value="IN_PROGRESS">In Progress</option>
             <option value="COMPLETED">Completed</option>
           </select>
-          <button 
+          <Button 
+            variant="primary"
             onClick={handleAddClick}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-lg font-medium transition-colors shadow-sm shrink-0"
+            leftIcon={<Plus className="w-4 h-4" />}
+            className="shrink-0"
           >
-            <Plus className="w-5 h-5" />
             Add Assignment
-          </button>
+          </Button>
         </div>
       </div>
 
       {assignments.length === 0 ? (
-        <div className="bg-white border border-gray-200 rounded-xl p-12 text-center flex flex-col items-center">
-          <div className="w-16 h-16 bg-indigo-50 rounded-full flex items-center justify-center mb-4">
-            <CheckSquare className="w-8 h-8 text-indigo-600" />
-          </div>
-          <h2 className="text-xl font-bold text-gray-900 mb-2">No assignments yet</h2>
-          <p className="text-gray-500 mb-6 max-w-sm">Stay on top of your work by tracking your assignments here.</p>
-          <button 
-            onClick={handleAddClick}
-            className="flex items-center gap-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors"
-          >
-            <Plus className="w-5 h-5" />
-            Add Your First Assignment
-          </button>
-        </div>
+        <Card padding="lg" className="border-dashed border-[var(--cf-border)] bg-[var(--cf-surface-muted)]/40 p-12 text-center flex flex-col items-center">
+          <EmptyState
+            icon={<CheckSquare className="w-8 h-8 text-[var(--cf-brand)]" />}
+            title="No assignments logged yet"
+            description="Keep track of your homework, problem sets, and upcoming deadlines in one place."
+            action={
+              <Button 
+                variant="outline"
+                onClick={handleAddClick}
+                leftIcon={<Plus className="w-4 h-4" />}
+              >
+                Add Your First Assignment
+              </Button>
+            }
+          />
+        </Card>
       ) : filteredAssignments.length === 0 ? (
-        <div className="bg-white border border-gray-200 rounded-xl p-12 text-center">
-          <p className="text-gray-500">No assignments match your filters.</p>
-        </div>
+        <Card padding="lg" className="border border-[var(--cf-border)] bg-[var(--cf-surface)] p-12 text-center">
+          <p className="text-sm text-[var(--cf-text-secondary)]">No assignments match your active filters.</p>
+        </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
           {filteredAssignments.map(assignment => (
             <AssignmentCard 
               key={assignment.id} 
@@ -146,6 +162,6 @@ export default function Assignments() {
         onConfirm={confirmDelete}
         title={getTitleForDelete()}
       />
-    </div>
+    </motion.div>
   );
 }

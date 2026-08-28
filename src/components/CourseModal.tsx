@@ -1,5 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { Course } from '../lib/types';
+import { X } from 'lucide-react';
+import { motion } from 'motion/react';
+import { Button } from './ui/Button';
+import { Input } from './ui/Input';
 
 type CourseModalProps = {
   isOpen: boolean;
@@ -19,6 +23,16 @@ export default function CourseModal({ isOpen, onClose, onSave, initialData }: Co
     attendanceThreshold: initialData?.attendanceThreshold ?? 75,
   });
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -49,51 +63,70 @@ export default function CourseModal({ isOpen, onClose, onSave, initialData }: Co
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
-        <h2 className="text-xl font-bold mb-4">{initialData ? 'Edit Course' : 'Add Course'}</h2>
-        {error && <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-md text-sm">{error}</div>}
+    <div
+      className="fixed inset-0 bg-[var(--cf-overlay)] flex items-center justify-center p-4 z-50 transition-opacity backdrop-blur-xs"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.96 }}
+        transition={{ duration: 0.18, ease: 'easeOut' }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="course-modal-title"
+        onClick={(e) => e.stopPropagation()}
+        className="bg-[var(--cf-surface)] border border-[var(--cf-border)] rounded-2xl shadow-[var(--cf-elev-3)] w-full max-w-md p-6 max-h-[90vh] overflow-y-auto relative"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h2 id="course-modal-title" className="font-sans-display text-lg font-bold text-[var(--cf-text)]">
+            {initialData ? 'Edit Course' : 'Add Course'}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-[var(--cf-text-tertiary)] hover:text-[var(--cf-text)] hover:bg-[var(--cf-surface-muted)] rounded-lg p-1.5 transition-colors cursor-pointer"
+            aria-label="Close modal"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {error && <div className="mb-4 p-3 bg-[var(--cf-danger-subtle)] border border-[var(--cf-danger-border)] text-[var(--cf-danger)] rounded-xl text-xs font-medium">{error}</div>}
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="courseCode" className="block text-sm font-medium text-gray-700 mb-1">Course Code</label>
-            <input id="courseCode" type="text" required value={formData.code} onChange={e => setFormData({ ...formData, code: e.target.value })} className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="e.g. CS101" />
+            <Input id="courseCode" label="Course Code *" required value={formData.code} onChange={e => setFormData({ ...formData, code: e.target.value })} placeholder="e.g. CS101" />
           </div>
           <div>
-            <label htmlFor="courseTitle" className="block text-sm font-medium text-gray-700 mb-1">Course Title</label>
-            <input id="courseTitle" type="text" required value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Introduction to Computer Science" />
+            <Input id="courseTitle" label="Course Title *" required value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} placeholder="Introduction to Computer Science" />
           </div>
           <div>
-            <label htmlFor="instructor" className="block text-sm font-medium text-gray-700 mb-1">Instructor</label>
-            <input id="instructor" type="text" required value={formData.instructor} onChange={e => setFormData({ ...formData, instructor: e.target.value })} className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Dr. Smith" />
+            <Input id="instructor" label="Instructor *" required value={formData.instructor} onChange={e => setFormData({ ...formData, instructor: e.target.value })} placeholder="Dr. Smith" />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label htmlFor="credits" className="block text-sm font-medium text-gray-700 mb-1">Credits</label>
-              <input id="credits" type="number" min="0" required value={formData.credits} onChange={e => setFormData({ ...formData, credits: Number(e.target.value) })} className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 outline-none" />
+              <Input id="credits" label="Credits" type="number" min="0" required value={formData.credits} onChange={e => setFormData({ ...formData, credits: Number(e.target.value) })} />
             </div>
             <div>
-              <label htmlFor="threshold" className="block text-sm font-medium text-gray-700 mb-1">Threshold (%)</label>
-              <input id="threshold" type="number" min="1" max="100" required value={formData.attendanceThreshold} onChange={e => setFormData({ ...formData, attendanceThreshold: Number(e.target.value) })} className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 outline-none" />
+              <Input id="threshold" label="Threshold (%)" type="number" min="1" max="100" required value={formData.attendanceThreshold} onChange={e => setFormData({ ...formData, attendanceThreshold: Number(e.target.value) })} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label htmlFor="attendedClasses" className="block text-sm font-medium text-gray-700 mb-1">Attended Classes</label>
-              <input id="attendedClasses" type="number" min="0" required value={formData.attendedClasses} onChange={e => setFormData({ ...formData, attendedClasses: Number(e.target.value) })} className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 outline-none" />
+              <Input id="attendedClasses" label="Attended" type="number" min="0" required value={formData.attendedClasses} onChange={e => setFormData({ ...formData, attendedClasses: Number(e.target.value) })} />
             </div>
             <div>
-              <label htmlFor="totalClasses" className="block text-sm font-medium text-gray-700 mb-1">Total Classes</label>
-              <input id="totalClasses" type="number" min="0" required value={formData.totalClasses} onChange={e => setFormData({ ...formData, totalClasses: Number(e.target.value) })} className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 outline-none" />
+              <Input id="totalClasses" label="Total Classes" type="number" min="0" required value={formData.totalClasses} onChange={e => setFormData({ ...formData, totalClasses: Number(e.target.value) })} />
             </div>
           </div>
           
-          <div className="flex justify-end gap-3 mt-6">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md font-medium transition-colors">Cancel</button>
-            <button type="submit" className="px-4 py-2 text-white bg-indigo-600 hover:bg-indigo-700 rounded-md font-medium transition-colors">Save Course</button>
+          <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-[var(--cf-border-subtle)]">
+            <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+            <Button type="submit" variant="primary">Save Course</Button>
           </div>
         </form>
-      </div>
+      </motion.div>
     </div>
   );
 }

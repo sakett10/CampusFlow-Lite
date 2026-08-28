@@ -1,9 +1,13 @@
 import { useState } from 'react';
 import { Plus, BookOpen } from 'lucide-react';
+import { motion } from 'motion/react';
 import { useCourses } from '../hooks/useCourses';
 import CourseCard from '../components/CourseCard';
 import CourseModal from '../components/CourseModal';
 import DeleteConfirmModal from '../components/DeleteConfirmModal';
+import { Button } from '../components/ui/Button';
+import { EmptyState } from '../components/ui/EmptyState';
+import { Card } from '../components/ui/Card';
 import type { Course } from '../lib/types';
 
 export default function Courses() {
@@ -48,38 +52,49 @@ export default function Courses() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <div className="flex justify-between items-center mb-8">
+    <motion.div 
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: 'easeOut' }}
+      className="max-w-6xl mx-auto space-y-6 pb-12"
+    >
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-[var(--cf-border-subtle)] pb-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Courses</h1>
-          <p className="text-gray-500 mt-1">Manage your enrolled courses and track attendance.</p>
+          <h1 className="font-sans-display text-[length:var(--cf-text-display-size)] leading-tight font-bold text-[var(--cf-text)]">
+            Courses
+          </h1>
+          <p className="text-[length:var(--cf-text-subtitle-size)] text-[var(--cf-text-secondary)] mt-1">
+            Manage your enrolled courses, syllabus credits, and attendance records.
+          </p>
         </div>
-        <button 
+        <Button 
+          variant="primary"
           onClick={handleAddClick}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-lg font-medium transition-colors shadow-sm"
+          leftIcon={<Plus className="w-4 h-4" />}
         >
-          <Plus className="w-5 h-5" />
           Add Course
-        </button>
+        </Button>
       </div>
 
       {courses.length === 0 ? (
-        <div className="bg-white border border-gray-200 rounded-xl p-12 text-center flex flex-col items-center">
-          <div className="w-16 h-16 bg-indigo-50 rounded-full flex items-center justify-center mb-4">
-            <BookOpen className="w-8 h-8 text-indigo-600" />
-          </div>
-          <h2 className="text-xl font-bold text-gray-900 mb-2">No courses yet</h2>
-          <p className="text-gray-500 mb-6 max-w-sm">You haven't added any courses. Add your first course to start tracking your attendance and assignments.</p>
-          <button 
-            onClick={handleAddClick}
-            className="flex items-center gap-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors"
-          >
-            <Plus className="w-5 h-5" />
-            Add Your First Course
-          </button>
-        </div>
+        <Card padding="lg" className="border-dashed border-[var(--cf-border)] bg-[var(--cf-surface-muted)]/40 p-12 text-center flex flex-col items-center">
+          <EmptyState
+            icon={<BookOpen className="w-8 h-8 text-[var(--cf-brand)]" />}
+            title="No courses enrolled yet"
+            description="Add your enrolled courses to start tracking class attendance and course assignments."
+            action={
+              <Button 
+                variant="outline"
+                onClick={handleAddClick}
+                leftIcon={<Plus className="w-4 h-4" />}
+              >
+                Add Your First Course
+              </Button>
+            }
+          />
+        </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {courses.map(course => (
             <CourseCard 
               key={course.id} 
@@ -106,6 +121,6 @@ export default function Courses() {
         onConfirm={confirmDelete}
         title={getCourseTitleForDelete()}
       />
-    </div>
+    </motion.div>
   );
 }

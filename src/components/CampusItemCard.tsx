@@ -82,49 +82,49 @@ export default function CampusItemCard({ item, onDelete }: CampusItemCardProps) 
 
   return (
     <>
-      <Card padding="lg" className="group flex flex-col transition-all duration-200 hover:shadow-[var(--cf-elev-2)] hover:-translate-y-1 hover:border-[var(--cf-border-strong)] focus-within:shadow-[var(--cf-elev-2)] focus-within:-translate-y-1 focus-within:border-[var(--cf-border-strong)] h-full">
+      <Card padding="lg" className="group flex flex-col transition-all duration-200 hover:shadow-[var(--cf-elev-2)] hover:-translate-y-0.5 hover:border-[var(--cf-border-strong)] focus-within:shadow-[var(--cf-elev-2)] focus-within:-translate-y-0.5 focus-within:border-[var(--cf-border-strong)] h-full">
 
         {/* Type and Status badges */}
-        <div className="mb-4 flex items-start justify-between gap-2">
-          <Badge variant="neutral" className="text-[length:var(--cf-text-micro-size)] font-bold tracking-wider">{typeLabel}</Badge>
+        <div className="mb-3.5 flex items-start justify-between gap-2">
+          <Badge variant="brand" className="text-xs font-semibold">{typeLabel}</Badge>
           {statusConfig.label && (
-            <Badge variant={statusConfig.variant} className="shadow-sm">{statusConfig.label}</Badge>
+            <Badge variant={statusConfig.variant} className="text-xs font-semibold">{statusConfig.label}</Badge>
           )}
         </div>
 
-        <h3 className="mb-3 text-[length:var(--cf-text-title-size)] leading-[1.3] font-bold tracking-tight text-[var(--cf-text)] group-hover:text-[var(--cf-brand)] transition-colors line-clamp-2">
+        <h3 className="mb-2 font-sans-display text-base leading-snug font-bold tracking-tight text-[var(--cf-text)] group-hover:text-[var(--cf-brand)] transition-colors line-clamp-2">
           {displayTitle}
         </h3>
 
         {/* Description */}
         {item.description && (
-          <p className="mb-5 line-clamp-2 text-[length:var(--cf-text-body-size)] leading-relaxed text-[var(--cf-text-secondary)]">
+          <p className="mb-4 line-clamp-2 font-reading text-sm leading-relaxed text-[var(--cf-text-secondary)]">
             {item.description}
           </p>
         )}
 
         {/* Event date / venue */}
         {(item.date || item.venue || item.startTime) && (
-          <div className="mb-6 flex flex-col gap-2.5 text-[length:var(--cf-text-body-size)] font-medium text-[var(--cf-text-secondary)]">
+          <div className="mb-5 flex flex-col gap-2 text-xs font-medium text-[var(--cf-text-secondary)]">
             {item.date && (
-              <div className="flex min-w-0 items-start gap-3">
-                <Calendar className="mt-0.5 h-4 w-4 shrink-0 text-[var(--cf-text-tertiary)]" aria-hidden />
-                <span className="truncate">{formatDueDate(item.date)}</span>
+              <div className="flex min-w-0 items-start gap-2.5">
+                <Calendar className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--cf-text-tertiary)]" aria-hidden />
+                <span className="truncate font-mono-meta">{formatDueDate(item.date)}</span>
               </div>
             )}
             {item.startTime && (
-              <div className="flex min-w-0 items-start gap-3">
-                <Clock className="mt-0.5 h-4 w-4 shrink-0 text-[var(--cf-text-tertiary)]" aria-hidden />
-                <span className="truncate">
+              <div className="flex min-w-0 items-start gap-2.5">
+                <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--cf-text-tertiary)]" aria-hidden />
+                <span className="truncate font-mono-meta">
                   {formatTime(item.startTime)}
                   {item.endTime ? ` – ${formatTime(item.endTime)}` : ''}
                 </span>
               </div>
             )}
             {item.venue && (
-              <div className="flex min-w-0 items-start gap-3">
-                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[var(--cf-text-tertiary)]" aria-hidden />
-                <span className="truncate">{item.venue}</span>
+              <div className="flex min-w-0 items-start gap-2.5">
+                <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--cf-text-tertiary)]" aria-hidden />
+                <span className="truncate font-sans">{item.venue}</span>
               </div>
             )}
           </div>
@@ -133,20 +133,20 @@ export default function CampusItemCard({ item, onDelete }: CampusItemCardProps) 
         {/* Registration deadline */}
         {item.registrationDeadline && deadlineTone && (
           <div
-            className={`mb-6 flex items-start gap-3 rounded-[var(--cf-radius-md)] border px-4 py-3 text-[length:var(--cf-text-body-strong-size)] font-semibold ${DEADLINE_STYLES[deadlineTone]}`}
+            className={`mb-5 flex items-start gap-3 rounded-xl border p-3 text-xs font-semibold ${DEADLINE_STYLES[deadlineTone]}`}
           >
-            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 opacity-80" aria-hidden />
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 opacity-80" aria-hidden />
             <div>
-              <span className="block text-[length:var(--cf-text-micro-size)] font-bold uppercase tracking-wider opacity-80 mb-0.5">
+              <span className="block text-[10px] font-bold uppercase tracking-wider opacity-80 mb-0.5">
                 Registration Deadline
               </span>
-              <span className="flex items-center flex-wrap gap-x-2 gap-y-1">
+              <span className="flex items-center flex-wrap gap-x-2 gap-y-1 font-mono-meta">
                 {formatDueDate(item.registrationDeadline)}
                 {deadlineTone === 'overdue' && (
-                  <Badge variant="danger" className="text-[10px] py-0 px-1.5 h-4 font-bold tracking-wider">OVERDUE</Badge>
+                  <Badge variant="danger" className="text-[9px] py-0 px-1.5 h-4 font-bold tracking-wider">OVERDUE</Badge>
                 )}
                 {deadlineTone === 'soon' && (
-                  <Badge variant="warning" className="text-[10px] py-0 px-1.5 h-4 font-bold tracking-wider">SOON</Badge>
+                  <Badge variant="warning" className="text-[9px] py-0 px-1.5 h-4 font-bold tracking-wider">SOON</Badge>
                 )}
               </span>
             </div>
@@ -154,12 +154,12 @@ export default function CampusItemCard({ item, onDelete }: CampusItemCardProps) 
         )}
 
         {/* Footer actions */}
-        <div className="mt-auto flex items-center gap-3 border-t border-[var(--cf-border)] pt-4">
+        <div className="mt-auto flex items-center gap-2.5 border-t border-[var(--cf-border-subtle)] pt-3.5">
           <Link
             to={`/campus-feed/${item.id}`}
-            className="flex-1 inline-flex h-10 items-center justify-center rounded-[var(--cf-radius-md)] bg-[var(--cf-brand)] text-[length:var(--cf-text-body-strong-size)] font-semibold text-[var(--cf-brand-fg)] shadow-sm transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--cf-surface)] focus-visible:ring-[var(--cf-brand)]"
+            className="flex-1 inline-flex h-10 items-center justify-center rounded-xl bg-[var(--cf-brand)] text-xs font-semibold text-white shadow-sm transition-all hover:bg-[var(--cf-brand-hover)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cf-brand)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--cf-surface)]"
           >
-            View Details
+            View Notice
           </Link>
           <Button
             variant="ghost"
@@ -167,9 +167,9 @@ export default function CampusItemCard({ item, onDelete }: CampusItemCardProps) 
             onClick={() => setConfirmOpen(true)}
             aria-label={`Delete ${displayTitle}`}
             title={`Delete ${displayTitle}`}
-            className="h-10 w-10 shrink-0 p-0 text-[var(--cf-text-tertiary)] hover:bg-[var(--cf-danger-subtle)] hover:text-[var(--cf-danger)]"
+            className="h-10 w-10 shrink-0 p-0 text-[var(--cf-text-tertiary)] hover:bg-[var(--cf-danger-subtle)] hover:text-[var(--cf-danger)] focus-visible:ring-2 focus-visible:ring-[var(--cf-danger)] rounded-xl"
           >
-            <Trash2 className="h-5 w-5" aria-hidden="true" />
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>
       </Card>

@@ -1,5 +1,6 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useCampusFeed } from '../hooks/useCampusFeed';
+import { motion } from 'motion/react';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Badge, type BadgeVariant } from '../components/ui/Badge';
@@ -24,7 +25,7 @@ export default function CampusItemDetail() {
   if (error) {
     return (
       <div className="mx-auto w-full max-w-3xl">
-        <div className="rounded-[var(--cf-radius-lg)] border border-[var(--cf-danger)]/25 bg-[var(--cf-danger-subtle)] px-5 py-4 text-[var(--cf-danger)]">
+        <div className="rounded-[var(--cf-radius-lg)] border border-[var(--cf-danger)]/25 bg-[var(--cf-danger-subtle)] px-5 py-4 text-[var(--cf-danger)] font-medium">
           Failed to load event details.
         </div>
       </div>
@@ -40,8 +41,8 @@ export default function CampusItemDetail() {
           Back to Feed
         </Button>
         <Card padding="lg" className="text-center">
-          <h2 className="text-[length:var(--cf-text-title-size)] font-semibold text-[var(--cf-text)]">Event not found</h2>
-          <p className="mt-2 text-[var(--cf-text-secondary)]">The event you are looking for does not exist or has been deleted.</p>
+          <h2 className="font-sans-display text-[length:var(--cf-text-title-size)] font-semibold text-[var(--cf-text)]">Event not found</h2>
+          <p className="mt-2 font-reading text-[var(--cf-text-secondary)]">The event you are looking for does not exist or has been deleted.</p>
         </Card>
       </div>
     );
@@ -61,7 +62,12 @@ export default function CampusItemDetail() {
   const actions = item.importantActions ?? [];
 
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-6 pb-12">
+    <motion.div 
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: 'easeOut' }}
+      className="mx-auto w-full max-w-4xl space-y-6 pb-12"
+    >
       <nav aria-label="Back navigation">
         <Link 
           to="/campus-feed"
@@ -72,66 +78,80 @@ export default function CampusItemDetail() {
         </Link>
       </nav>
 
-      <Card padding="lg" className="flex flex-col">
-        <header className="mb-8">
-          <div className="mb-4 flex flex-wrap items-start gap-2">
-            <Badge variant="brand">{typeLabel}</Badge>
+      <Card padding="lg" className="flex flex-col border border-[var(--cf-border)] bg-[var(--cf-surface)] shadow-sm">
+        {/* Header */}
+        <header className="mb-8 border-b border-[var(--cf-border-subtle)] pb-6">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <Badge variant="brand" className="text-xs font-semibold">{typeLabel}</Badge>
             {statusConfig.label && (
-              <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>
+              <Badge variant={statusConfig.variant} className="text-xs font-semibold">{statusConfig.label}</Badge>
             )}
           </div>
-          <h1 className="text-[length:var(--cf-text-display-size)] leading-tight font-bold text-[var(--cf-text)]">
-            {item.title || 'Untitled Event'}
+          <h1 className="font-sans-display text-[length:var(--cf-text-display-size)] leading-[1.25] font-bold text-[var(--cf-text)]">
+            {item.title || 'Untitled Notice'}
           </h1>
+          {item.organizer && (
+            <p className="mt-2 text-sm text-[var(--cf-text-secondary)]">
+              Issued by <span className="font-semibold text-[var(--cf-text)]">{item.organizer}</span>
+            </p>
+          )}
         </header>
 
         <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
-          <div className="md:col-span-2 space-y-8">
-            {item.description && (
-              <section>
-                <h2 className="mb-3 text-[length:var(--cf-text-title-size)] font-semibold text-[var(--cf-text)]">About</h2>
-                <p className="whitespace-pre-wrap text-[length:var(--cf-text-body-size)] leading-relaxed text-[var(--cf-text-secondary)]">
-                  {item.description}
-                </p>
-              </section>
-            )}
-
+          {/* Main Reading Column (Source Sans 3, Calm Hierarchy) */}
+          <div className="md:col-span-2 space-y-8 cf-reading-container">
             {actions.length > 0 && (
-              <section>
-                <h2 className="mb-3 text-[length:var(--cf-text-title-size)] font-semibold text-[var(--cf-text)]">Important Actions</h2>
-                <ul className="space-y-3">
+              <section className="rounded-xl border border-[var(--cf-border)] bg-[var(--cf-surface-muted)] p-5">
+                <h2 className="mb-3 font-sans-display text-sm font-semibold uppercase tracking-wider text-[var(--cf-text)]">
+                  Key Action Items
+                </h2>
+                <ul className="space-y-2.5">
                   {actions.map((action, i) => (
-                    <li key={i} className="flex items-start gap-3 rounded-[var(--cf-radius-md)] border border-[var(--cf-border)] bg-[var(--cf-surface-muted)] p-3">
-                      <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-[var(--cf-success)]" aria-hidden="true" />
-                      <span className="text-[length:var(--cf-text-body-size)] text-[var(--cf-text)]">{action}</span>
+                    <li key={i} className="flex items-start gap-2.5">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[var(--cf-success)]" aria-hidden="true" />
+                      <span className="font-sans text-sm text-[var(--cf-text)]">{action}</span>
                     </li>
                   ))}
                 </ul>
               </section>
             )}
+
+            {item.description && (
+              <section>
+                <h2 className="mb-3 font-sans-display text-base font-semibold text-[var(--cf-text)]">
+                  Notice Details
+                </h2>
+                <div className="font-reading text-[16px] leading-[1.65] text-[var(--cf-text)] whitespace-pre-wrap">
+                  {item.description}
+                </div>
+              </section>
+            )}
             
             {item.eligibility && (
-              <section>
-                <h2 className="mb-3 text-[length:var(--cf-text-title-size)] font-semibold text-[var(--cf-text)]">Eligibility</h2>
-                <p className="text-[length:var(--cf-text-body-size)] leading-relaxed text-[var(--cf-text-secondary)]">
+              <section className="rounded-xl border border-[var(--cf-border-subtle)] bg-[var(--cf-surface-muted)]/50 p-4">
+                <h2 className="mb-2 font-sans-display text-sm font-semibold text-[var(--cf-text)]">
+                  Eligibility & Criteria
+                </h2>
+                <p className="font-reading text-[15px] leading-relaxed text-[var(--cf-text-secondary)]">
                   {item.eligibility}
                 </p>
               </section>
             )}
           </div>
 
+          {/* Sticky Metadata Sidebar */}
           <aside className="space-y-6">
-            <section className="rounded-[var(--cf-radius-md)] border border-[var(--cf-border)] bg-[var(--cf-surface)] p-4 space-y-4">
-              <h2 className="text-[length:var(--cf-text-body-strong-size)] font-semibold text-[var(--cf-text)] border-b border-[var(--cf-border)] pb-2 mb-3">
-                Event Details
+            <section className="rounded-xl border border-[var(--cf-border)] bg-[var(--cf-surface-muted)] p-4 space-y-4">
+              <h2 className="font-sans-display text-xs font-semibold uppercase tracking-wider text-[var(--cf-text-tertiary)] border-b border-[var(--cf-border-subtle)] pb-2 mb-3">
+                Notice Metadata
               </h2>
               
               {item.date && (
                 <div className="flex items-start gap-3">
                   <Calendar className="mt-0.5 h-4 w-4 shrink-0 text-[var(--cf-text-tertiary)]" aria-hidden="true" />
                   <div>
-                    <span className="block text-[length:var(--cf-text-micro-size)] font-medium uppercase tracking-wider text-[var(--cf-text-tertiary)]">Date</span>
-                    <span className="text-[length:var(--cf-text-body-size)] text-[var(--cf-text-secondary)]">{formatDueDate(item.date)}</span>
+                    <span className="block text-[11px] font-semibold uppercase tracking-wider text-[var(--cf-text-tertiary)]">Date</span>
+                    <span className="font-mono-meta text-sm font-medium text-[var(--cf-text)]">{formatDueDate(item.date)}</span>
                   </div>
                 </div>
               )}
@@ -140,8 +160,8 @@ export default function CampusItemDetail() {
                 <div className="flex items-start gap-3">
                   <Clock className="mt-0.5 h-4 w-4 shrink-0 text-[var(--cf-text-tertiary)]" aria-hidden="true" />
                   <div>
-                    <span className="block text-[length:var(--cf-text-micro-size)] font-medium uppercase tracking-wider text-[var(--cf-text-tertiary)]">Time</span>
-                    <span className="text-[length:var(--cf-text-body-size)] text-[var(--cf-text-secondary)]">
+                    <span className="block text-[11px] font-semibold uppercase tracking-wider text-[var(--cf-text-tertiary)]">Time</span>
+                    <span className="font-mono-meta text-sm font-medium text-[var(--cf-text)]">
                       {item.startTime ? formatTime(item.startTime) : ''}
                       {item.startTime && item.endTime ? ' – ' : ''}
                       {item.endTime ? formatTime(item.endTime) : ''}
@@ -154,18 +174,18 @@ export default function CampusItemDetail() {
                 <div className="flex items-start gap-3">
                   <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[var(--cf-text-tertiary)]" aria-hidden="true" />
                   <div>
-                    <span className="block text-[length:var(--cf-text-micro-size)] font-medium uppercase tracking-wider text-[var(--cf-text-tertiary)]">Venue</span>
-                    <span className="text-[length:var(--cf-text-body-size)] text-[var(--cf-text-secondary)]">{item.venue}</span>
+                    <span className="block text-[11px] font-semibold uppercase tracking-wider text-[var(--cf-text-tertiary)]">Venue</span>
+                    <span className="font-sans text-sm text-[var(--cf-text)]">{item.venue}</span>
                   </div>
                 </div>
               )}
 
               {item.registrationDeadline && (
-                <div className="flex items-start gap-3">
+                <div className="flex items-start gap-3 rounded-lg bg-[var(--cf-warning-subtle)] border border-[var(--cf-warning-border)] p-3">
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--cf-warning)]" aria-hidden="true" />
                   <div>
-                    <span className="block text-[length:var(--cf-text-micro-size)] font-medium uppercase tracking-wider text-[var(--cf-text-tertiary)]">Registration Deadline</span>
-                    <span className="text-[length:var(--cf-text-body-size)] text-[var(--cf-text-secondary)]">{formatDueDate(item.registrationDeadline)}</span>
+                    <span className="block text-[11px] font-bold uppercase tracking-wider text-[var(--cf-warning)]">Registration Deadline</span>
+                    <span className="font-mono-meta text-sm font-bold text-[var(--cf-text)]">{formatDueDate(item.registrationDeadline)}</span>
                   </div>
                 </div>
               )}
@@ -174,8 +194,8 @@ export default function CampusItemDetail() {
                 <div className="flex items-start gap-3">
                   <User className="mt-0.5 h-4 w-4 shrink-0 text-[var(--cf-text-tertiary)]" aria-hidden="true" />
                   <div>
-                    <span className="block text-[length:var(--cf-text-micro-size)] font-medium uppercase tracking-wider text-[var(--cf-text-tertiary)]">Organizer</span>
-                    <span className="text-[length:var(--cf-text-body-size)] text-[var(--cf-text-secondary)]">{item.organizer}</span>
+                    <span className="block text-[11px] font-semibold uppercase tracking-wider text-[var(--cf-text-tertiary)]">Organizer</span>
+                    <span className="font-sans text-sm text-[var(--cf-text)]">{item.organizer}</span>
                   </div>
                 </div>
               )}
@@ -183,6 +203,6 @@ export default function CampusItemDetail() {
           </aside>
         </div>
       </Card>
-    </div>
+    </motion.div>
   );
 }

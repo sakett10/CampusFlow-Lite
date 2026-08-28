@@ -6,6 +6,7 @@ import {
   Radio,
   Loader2
 } from 'lucide-react';
+import { motion } from 'motion/react';
 import { useCourses } from '../hooks/useCourses';
 import { useAssignments } from '../hooks/useAssignments';
 import { useCampusFeed } from '../hooks/useCampusFeed';
@@ -40,7 +41,12 @@ export default function Dashboard() {
     : `You're all caught up! Exploring opportunities across ${courses.length} courses.`;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-10 pb-8 cf-animate-enter">
+    <motion.div 
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: 'easeOut' }}
+      className="mx-auto max-w-6xl space-y-10 pb-8"
+    >
       {/* Hero / Overview */}
       <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
@@ -129,6 +135,6 @@ export default function Dashboard() {
           )}
         </div>
       </section>
-    </div>
+    </motion.div>
   );
 }

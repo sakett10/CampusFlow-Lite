@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { campusApi } from '../api/campusApi';
 import type { CampusItem, ItemType } from '../lib/types';
-import { Loader2, Sparkles, AlertTriangle } from 'lucide-react';
+import { Sparkles, AlertTriangle, X } from 'lucide-react';
+import { motion } from 'motion/react';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { useAuth } from '@clerk/clerk-react';
@@ -62,6 +63,20 @@ export default function AnalyzeNoticeModal({ isOpen, onClose, onSave }: AnalyzeN
   const { getToken } = useAuth();
 
   const [formData, setFormData] = useState<Partial<CampusItem>>({});
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        setStep('INPUT');
+        setText('');
+        setFormData({});
+        setError(null);
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -138,61 +153,96 @@ setFormData({
   };
 
   return (
-    <div className="fixed inset-0 bg-[var(--cf-overlay)] flex items-center justify-center p-4 z-50 transition-opacity">
-      <div
+    <div
+      className="fixed inset-0 bg-[var(--cf-overlay)] flex items-center justify-center p-4 z-50 transition-opacity backdrop-blur-xs"
+      onClick={closeAndReset}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.96 }}
+        transition={{ duration: 0.18, ease: 'easeOut' }}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
-        className="bg-[var(--cf-surface)] rounded-[var(--cf-radius-xl)] shadow-[var(--cf-elev-3)] w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 cf-animate-scale-in border border-[var(--cf-border)]"
+        onClick={(e) => e.stopPropagation()}
+        className="bg-[var(--cf-surface)] rounded-[var(--cf-radius-xl)] shadow-[var(--cf-elev-3)] w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 border border-[var(--cf-border)] relative"
       >
-        <h2 id="modal-title" className="text-[length:var(--cf-text-title-size)] font-bold text-[var(--cf-text)] mb-4 flex items-center gap-2">
-          <Sparkles className="w-5 h-5 text-[var(--cf-ai)]" aria-hidden="true" />
-          Campus Intelligence
-        </h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 id="modal-title" className="font-sans-display text-lg font-bold text-[var(--cf-text)] flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-[var(--cf-ai)]" aria-hidden="true" />
+            Analyze Campus Notice
+          </h2>
+          <button
+            type="button"
+            onClick={closeAndReset}
+            className="text-[var(--cf-text-tertiary)] hover:text-[var(--cf-text)] hover:bg-[var(--cf-surface-muted)] rounded-lg p-1.5 transition-colors cursor-pointer"
+            aria-label="Close modal"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
 
-        {error && <div role="alert" className="mb-4 p-3 bg-[var(--cf-danger-subtle)] text-[var(--cf-danger)] rounded-[var(--cf-radius-md)] text-[length:var(--cf-text-body-size)]">{error}</div>}
+        {error && (
+          <div role="alert" className="mb-4 p-3 bg-[var(--cf-danger-subtle)] border border-[var(--cf-danger-border)] text-[var(--cf-danger)] rounded-xl text-sm font-medium">
+            {error}
+          </div>
+        )}
 
         {step === 'INPUT' && (
           <div className="space-y-4">
-            <label htmlFor="notice-text" className="block text-[length:var(--cf-text-body-size)] text-[var(--cf-text-secondary)]">Paste any campus email, WhatsApp message, or notice. Our AI will extract the important details instantly.</label>
+            <p className="font-reading text-sm text-[var(--cf-text-secondary)]">
+              Paste an email, announcement, circular, or WhatsApp message. CampusFlow will extract events, dates, and deadlines.
+            </p>
             <textarea
               id="notice-text"
               value={text}
               onChange={e => setText(e.target.value)}
-              placeholder="Paste notice text here..."
-              className="w-full h-48 p-3 border border-[var(--cf-border-strong)] rounded-[var(--cf-radius-md)] focus:ring-2 focus:ring-[var(--cf-brand)] outline-none resize-none bg-[var(--cf-surface)] text-[var(--cf-text)] placeholder:text-[var(--cf-text-tertiary)]"
+              placeholder="Paste raw notice text here (e.g. 'Annual Hackathon on Oct 14th at Hall B, registration deadline Oct 10th')..."
+              className="w-full h-48 p-3.5 border border-[var(--cf-border)] rounded-xl font-reading text-[15px] focus:ring-2 focus:ring-[var(--cf-brand)] focus:border-transparent outline-none resize-none bg-[var(--cf-surface-muted)] text-[var(--cf-text)] placeholder:text-[var(--cf-text-tertiary)]"
             />
-            <div className="flex justify-end gap-3">
+            <div className="flex justify-end gap-3 pt-2">
               <Button variant="secondary" onClick={closeAndReset}>Cancel</Button>
               <Button variant="ai" onClick={handleAnalyze} rightIcon={<Sparkles className="w-4 h-4" />}>
-                Analyze Notice
+                Extract Information
               </Button>
             </div>
           </div>
         )}
 
         {step === 'ANALYZING' && (
-          <div className="py-12 flex flex-col items-center justify-center space-y-4">
-            <Loader2 className="w-10 h-10 text-[var(--cf-ai)] animate-spin" aria-hidden="true" />
-            <p className="text-[var(--cf-text-secondary)] font-medium">Extracting information...</p>
+          <div className="py-14 flex flex-col items-center justify-center space-y-4 text-center">
+            <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--cf-ai-subtle)] text-[var(--cf-ai)] border border-[var(--cf-ai-border)] shadow-[var(--cf-elev-ai)]">
+              <Sparkles className="h-6 w-6 animate-pulse" aria-hidden="true" />
+            </div>
+            <div className="space-y-1">
+              <p className="font-sans-display text-base font-semibold text-[var(--cf-text)]">
+                Analyzing campus notice...
+              </p>
+              <p className="text-xs text-[var(--cf-text-secondary)] font-mono-meta">
+                Detecting dates, deadlines, and key actions
+              </p>
+            </div>
           </div>
         )}
 
         {step === 'REVIEW' && (
           <form onSubmit={handleSave} className="space-y-5">
-            <div className="p-3 bg-[var(--cf-ai-subtle)] border border-[var(--cf-ai)]/20 rounded-[var(--cf-radius-md)] text-[length:var(--cf-text-body-size)] text-[var(--cf-ai)] flex items-start gap-2">
+            <div className="p-3 bg-[var(--cf-ai-subtle)] border border-[var(--cf-ai-border)] rounded-xl text-xs font-medium text-[var(--cf-ai)] flex items-start gap-2">
               <Sparkles className="w-4 h-4 mt-0.5 shrink-0" aria-hidden="true" />
-              <p>Review the extracted details below. <span className="font-bold text-[var(--cf-danger)]">Missing information</span> could not be reliably found in the source text.</p>
+              <p className="text-[var(--cf-text)]">
+                Review the structured fields extracted below. You can adjust any field before publishing to your feed.
+              </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Input id="field-title" required label="Title *" value={formData.title || ''} onChange={e => setFormData({...formData, title: e.target.value})} />
+                <Input id="field-title" required label="Notice Title *" value={formData.title || ''} onChange={e => setFormData({...formData, title: e.target.value})} />
               </div>
               <div>
-                <label htmlFor="field-type" className="block text-[length:var(--cf-text-body-strong-size)] font-medium text-[var(--cf-text)] mb-1.5">Type *</label>
-                <select id="field-type" required value={formData.type || ''} onChange={e => setFormData({...formData, type: e.target.value as ItemType})} className="w-full p-2 border border-[var(--cf-border-strong)] rounded-[var(--cf-radius-md)] bg-[var(--cf-surface)] text-[var(--cf-text)] focus:ring-2 focus:ring-[var(--cf-brand)] outline-none">
-                  <option value="" disabled>Select Type</option>
+                <label htmlFor="field-type" className="block text-sm font-medium text-[var(--cf-text)] mb-1.5">Category *</label>
+                <select id="field-type" required value={formData.type || ''} onChange={e => setFormData({...formData, type: e.target.value as ItemType})} className="w-full h-11 px-3.5 border border-[var(--cf-border)] rounded-xl bg-[var(--cf-surface)] text-[var(--cf-text)] text-sm focus:ring-2 focus:ring-[var(--cf-brand)] focus:border-transparent outline-none">
+                  <option value="" disabled>Select Category</option>
                   <option value="HACKATHON">Hackathon</option>
                   <option value="WORKSHOP">Workshop</option>
                   <option value="EVENT">Event</option>
@@ -203,8 +253,8 @@ setFormData({
             </div>
 
             <div>
-              <label htmlFor="field-description" className="block text-[length:var(--cf-text-body-strong-size)] font-medium text-[var(--cf-text)] mb-1.5">Description</label>
-              <textarea id="field-description" value={formData.description || ''} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full p-2 border border-[var(--cf-border-strong)] rounded-[var(--cf-radius-md)] h-20 bg-[var(--cf-surface)] text-[var(--cf-text)] focus:ring-2 focus:ring-[var(--cf-brand)] outline-none resize-none" />
+              <label htmlFor="field-description" className="block text-sm font-medium text-[var(--cf-text)] mb-1.5">Description</label>
+              <textarea id="field-description" value={formData.description || ''} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full p-3 border border-[var(--cf-border)] rounded-xl h-20 bg-[var(--cf-surface)] text-[var(--cf-text)] text-sm focus:ring-2 focus:ring-[var(--cf-brand)] focus:border-transparent outline-none resize-none" />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -215,10 +265,10 @@ setFormData({
 
                 return (
                 <div key={field}>
-                  <label htmlFor={fieldId} className="block text-[length:var(--cf-text-body-strong-size)] font-medium text-[var(--cf-text)] mb-1.5 capitalize flex justify-between">
+                  <label htmlFor={fieldId} className="block text-sm font-medium text-[var(--cf-text)] mb-1.5 capitalize flex justify-between">
                     {field.replace(/([A-Z])/g, ' $1').trim()}
                     {isMissing && (
-                      <span id={errorId} className="text-[var(--cf-danger)] text-[length:var(--cf-text-caption-size)] flex items-center gap-1"><AlertTriangle className="w-3 h-3" aria-hidden="true"/> Missing</span>
+                      <span id={errorId} className="text-[var(--cf-warning)] text-xs flex items-center gap-1 font-mono-meta"><AlertTriangle className="w-3 h-3" aria-hidden="true"/> Not found</span>
                     )}
                   </label>
                   <Input
@@ -229,19 +279,19 @@ setFormData({
                     value={(formData[field as keyof CampusItem] as string) || ''}
                     onChange={e => setFormData({...formData, [field]: e.target.value || null})}
                     placeholder={isMissing ? "Not found in text" : ""}
-                    className={isMissing ? 'border-[var(--cf-danger)] bg-[var(--cf-danger-subtle)]/50' : ''}
+                    className={isMissing ? 'border-[var(--cf-border-subtle)] bg-[var(--cf-surface-muted)]' : ''}
                   />
                 </div>
               )})}
             </div>
 
-            <div className="pt-4 flex justify-end gap-3 border-t border-[var(--cf-border)]">
+            <div className="pt-4 flex justify-end gap-3 border-t border-[var(--cf-border-subtle)]">
               <Button type="button" variant="secondary" onClick={() => setStep('INPUT')}>Back</Button>
               <Button type="submit" variant="primary">Save to Feed</Button>
             </div>
           </form>
         )}
-      </div>
+      </motion.div>
     </div>
   );
 }
