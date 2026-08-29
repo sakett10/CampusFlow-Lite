@@ -17,6 +17,18 @@ interface GmailTestResult {
   error?: string;
 }
 
+interface GmailMessageDetailResult {
+  status: number;
+  id?: string;
+  sender?: string;
+  recipient?: string;
+  subject?: string;
+  date?: string;
+  snippet?: string;
+  bodyPreview?: string;
+  error?: string;
+}
+
 export default function Settings() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('integrations');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -27,6 +39,9 @@ export default function Settings() {
   // Dev-only test state
   const [testLoading, setTestLoading] = useState(false);
   const [testResult, setTestResult] = useState<GmailTestResult | null>(null);
+  const [selectedMessageId, setSelectedMessageId] = useState<string>('');
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailResult, setDetailResult] = useState<GmailMessageDetailResult | null>(null);
   const { getToken } = useAuth();
 
   // Gmail connection status
@@ -93,6 +108,10 @@ export default function Settings() {
         .map((m: { id?: string }) => m.id)
         .filter(Boolean) as string[];
 
+      if (messageIds.length > 0 && !selectedMessageId) {
+        setSelectedMessageId(messageIds[0]);
+      }
+
       setTestResult({
         status,
         messageCount: messages.length,
@@ -111,6 +130,61 @@ export default function Settings() {
       setTestLoading(false);
     }
   };
+
+  const handleTestFetchMessageDetails = async (messageIdToFetch?: string) => {
+    const targetId = messageIdToFetch || selectedMessageId;
+    if (!targetId || !targetId.trim()) {
+      setDetailResult({
+        status: 400,
+        error: 'Please select or enter a valid message ID',
+      });
+      return;
+    }
+
+    setDetailLoading(true);
+    setDetailResult(null);
+    try {
+      const token = await getToken();
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(`/api/gmail/messages/${encodeURIComponent(targetId.trim())}`, {
+        headers,
+      });
+
+      const status = response.status;
+      const data = await response.json();
+
+      if (!response.ok) {
+        setDetailResult({
+          status,
+          error: data.error || `HTTP ${status} Error`,
+        });
+        return;
+      }
+
+      setDetailResult({
+        status,
+        id: data.id,
+        sender: data.from,
+        recipient: data.to,
+        subject: data.subject,
+        date: data.date,
+        snippet: data.snippet,
+        bodyPreview: data.body || data.bodyText || data.snippet || '',
+      });
+    } catch (err) {
+      setDetailResult({
+        status: 0,
+        error: err instanceof Error ? err.message : 'Failed to fetch message details',
+      });
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
 
 
   useEffect(() => {
@@ -340,11 +414,25 @@ export default function Settings() {
                       <div>
                         <span className="font-semibold text-[var(--cf-text-secondary)]">Message IDs:</span>
                         {testResult.messageIds.length > 0 ? (
-                          <ul className="list-disc list-inside mt-1 space-y-0.5 text-[var(--cf-text)] font-sans text-xs">
+                          <div className="flex flex-wrap gap-1.5 mt-1.5">
                             {testResult.messageIds.map((id) => (
-                              <li key={id} className="font-mono">{id}</li>
+                              <button
+                                key={id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedMessageId(id);
+                                  handleTestFetchMessageDetails(id);
+                                }}
+                                className={`px-2 py-0.5 rounded text-[11px] font-mono border transition-all cursor-pointer ${
+                                  selectedMessageId === id
+                                    ? 'bg-[var(--cf-brand)] text-white border-[var(--cf-brand)]'
+                                    : 'bg-[var(--cf-surface)] text-[var(--cf-text-secondary)] border-[var(--cf-border)] hover:border-[var(--cf-brand)] hover:text-[var(--cf-text)]'
+                                }`}
+                              >
+                                {id}
+                              </button>
                             ))}
-                          </ul>
+                          </div>
                         ) : (
                           <span className="text-[var(--cf-text-tertiary)] ml-1 font-sans">None</span>
                         )}
@@ -353,6 +441,88 @@ export default function Settings() {
                   )}
                 </div>
               )}
+
+              {/* Case B: Message Detail Retrieval */}
+              <div className="border-t border-amber-500/20 pt-3 mt-3 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h5 className="font-sans-display text-xs font-bold text-[var(--cf-text)]">
+                      Test Message Details (GET /api/gmail/messages/:messageId)
+                    </h5>
+                    <p className="text-[11px] text-[var(--cf-text-secondary)] mt-0.5">
+                      Retrieve and parse complete email metadata and body text for a specific message ID.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    value={selectedMessageId}
+                    onChange={(e) => setSelectedMessageId(e.target.value)}
+                    placeholder="Enter or select Gmail message ID"
+                    className="flex-1 px-3 py-1.5 rounded-lg text-xs font-mono bg-[var(--cf-surface)] border border-[var(--cf-border)] text-[var(--cf-text)] placeholder:text-[var(--cf-text-tertiary)] focus:outline-none focus:border-[var(--cf-brand)]"
+                  />
+                  <Button
+                    onClick={() => handleTestFetchMessageDetails()}
+                    disabled={detailLoading || !selectedMessageId.trim()}
+                    variant="secondary"
+                    size="sm"
+                  >
+                    {detailLoading ? 'Fetching Details...' : 'Fetch Details'}
+                  </Button>
+                </div>
+
+                {detailResult && (
+                  <div className="rounded-lg bg-[var(--cf-surface-muted)] p-3 border border-[var(--cf-border-subtle)] text-xs space-y-2">
+                    <div className="flex items-center gap-2 font-mono">
+                      <span className="font-semibold text-[var(--cf-text-secondary)]">HTTP Status:</span>
+                      <span className={detailResult.status === 200 ? 'text-[var(--cf-success)] font-bold' : 'text-rose-400 font-bold'}>
+                        {detailResult.status}
+                      </span>
+                    </div>
+
+                    {detailResult.error ? (
+                      <div className="text-rose-400 font-mono text-xs">
+                        Error: {detailResult.error}
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <div>
+                          <span className="font-semibold text-[var(--cf-text-secondary)]">Message ID:</span>{' '}
+                          <span className="font-mono text-[var(--cf-text)]">{detailResult.id}</span>
+                        </div>
+                        <div>
+                          <span className="font-semibold text-[var(--cf-text-secondary)]">Sender:</span>{' '}
+                          <span className="text-[var(--cf-text)]">{detailResult.sender || '<Empty>'}</span>
+                        </div>
+                        <div>
+                          <span className="font-semibold text-[var(--cf-text-secondary)]">Recipient:</span>{' '}
+                          <span className="text-[var(--cf-text)]">{detailResult.recipient || '<Empty>'}</span>
+                        </div>
+                        <div>
+                          <span className="font-semibold text-[var(--cf-text-secondary)]">Subject:</span>{' '}
+                          <span className="text-[var(--cf-text)] font-semibold">{detailResult.subject || '<No Subject>'}</span>
+                        </div>
+                        <div>
+                          <span className="font-semibold text-[var(--cf-text-secondary)]">Date:</span>{' '}
+                          <span className="text-[var(--cf-text)]">{detailResult.date || '<No Date>'}</span>
+                        </div>
+                        <div>
+                          <span className="font-semibold text-[var(--cf-text-secondary)]">Snippet:</span>{' '}
+                          <span className="text-[var(--cf-text-secondary)] italic">{detailResult.snippet || '<Empty>'}</span>
+                        </div>
+                        <div>
+                          <span className="font-semibold text-[var(--cf-text-secondary)] block mb-1">Body Preview:</span>
+                          <div className="max-h-40 overflow-y-auto rounded bg-[var(--cf-surface)] p-2.5 border border-[var(--cf-border-subtle)] font-mono text-[11px] text-[var(--cf-text)] whitespace-pre-wrap">
+                            {detailResult.bodyPreview || '<Empty Body>'}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </Card>
         </section>

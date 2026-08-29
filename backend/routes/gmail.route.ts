@@ -7,6 +7,7 @@ import {
   createOAuthState,
   verifyOAuthState,
   createAuthenticatedGmailClient,
+  parseGmailMessageDetails,
 } from '../services/gmail.service.js';
 import { pool } from '../db.js';
 import { randomUUID } from 'node:crypto';
@@ -235,6 +236,90 @@ router.get('/messages', requireAuth(), async (req, res) => {
 
     return res.status(500).json({
       error: 'Failed to retrieve Gmail messages',
+    });
+  }
+});
+
+/**
+ * Retrieve Gmail message details
+ * GET /api/gmail/messages/:messageId
+ */
+router.get('/messages/:messageId', requireAuth(), async (req, res) => {
+  const { userId } = getAuth(req);
+
+  if (!userId) {
+    return res.status(401).json({
+      error: 'Unauthorized',
+    });
+  }
+
+  const { messageId } = req.params;
+
+  if (!messageId || typeof messageId !== 'string') {
+    return res.status(400).json({
+      error: 'Invalid message ID',
+    });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `
+      SELECT access_token, refresh_token, expiry_date
+      FROM gmail_connections
+      WHERE user_id = $1
+      `,
+      [userId],
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        error: 'Gmail account is not connected',
+      });
+    }
+
+    const { access_token, refresh_token, expiry_date } = rows[0];
+
+    const gmail = createAuthenticatedGmailClient({
+      accessToken: access_token,
+      refreshToken: refresh_token,
+      expiryDate: expiry_date,
+    });
+
+    const response = await gmail.users.messages.get({
+      userId: 'me',
+      id: messageId,
+      format: 'full',
+    });
+
+    const messageDetails = parseGmailMessageDetails(
+      response.data,
+      messageId,
+    );
+
+    return res.json(messageDetails);
+  } catch (error) {
+    if (
+      error &&
+      typeof error === 'object' &&
+      ('code' in error || 'status' in error)
+    ) {
+      const statusCode =
+        (error as { code?: number; status?: number }).code ||
+        (error as { code?: number; status?: number }).status;
+      if (statusCode === 404) {
+        return res.status(404).json({
+          error: 'Gmail message not found',
+        });
+      }
+    }
+
+    console.error(
+      'Failed to retrieve Gmail message:',
+      error instanceof Error ? error.message : 'Unknown error',
+    );
+
+    return res.status(500).json({
+      error: 'Failed to retrieve Gmail message',
     });
   }
 });

@@ -1,31 +1,38 @@
 import { describe, it, expect } from 'vitest';
 import { isOverdue } from './dateUtils';
 
+function getLocalDateString(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 describe('dateUtils', () => {
   it('Yesterday + PENDING => overdue', () => {
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-    const dateStr = yesterday.toISOString().split('T')[0];
+    const dateStr = getLocalDateString(yesterday);
     expect(isOverdue(dateStr, 'PENDING')).toBe(true);
   });
 
   it('Today => not incorrectly marked overdue', () => {
     const today = new Date();
-    const dateStr = today.toISOString().split('T')[0];
+    const dateStr = getLocalDateString(today);
     expect(isOverdue(dateStr, 'PENDING')).toBe(false);
   });
 
   it('Future date + PENDING => not overdue', () => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    const dateStr = tomorrow.toISOString().split('T')[0];
+    const dateStr = getLocalDateString(tomorrow);
     expect(isOverdue(dateStr, 'PENDING')).toBe(false);
   });
 
   it('Yesterday + COMPLETED => not overdue', () => {
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-    const dateStr = yesterday.toISOString().split('T')[0];
+    const dateStr = getLocalDateString(yesterday);
     expect(isOverdue(dateStr, 'COMPLETED')).toBe(false);
   });
 });
