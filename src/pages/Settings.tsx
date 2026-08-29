@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useAuth } from '@clerk/clerk-react';
 import { Mail, CheckCircle2, Shield, Sparkles, X, User, Bell, Palette, Database } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Card } from '../components/ui/Card';
@@ -7,9 +8,110 @@ import { Badge } from '../components/ui/Badge';
 
 type SettingsTab = 'account' | 'appearance' | 'notifications' | 'integrations' | 'privacy';
 
+interface GmailTestResult {
+  status: number;
+  messageCount: number;
+  messageIds: string[];
+  resultSizeEstimate?: number;
+  nextPageToken?: string | null;
+  error?: string;
+}
+
 export default function Settings() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('integrations');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [gmailConnected, setGmailConnected] = useState(false);
+  const [gmailEmail, setGmailEmail] = useState<string | null>(null);
+  const [gmailLoading, setGmailLoading] = useState(true);
+
+  // Dev-only test state
+  const [testLoading, setTestLoading] = useState(false);
+  const [testResult, setTestResult] = useState<GmailTestResult | null>(null);
+  const { getToken } = useAuth();
+
+  // Gmail connection status
+  useEffect(() => {
+    const checkGmailConnection = async () => {
+      try {
+        const token = await getToken();
+        const headers: Record<string, string> = {};
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const response = await fetch('/api/gmail/status', {
+          headers,
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to check Gmail status');
+        }
+
+        const data = await response.json();
+
+        setGmailConnected(data.connected);
+        setGmailEmail(data.email ?? null);
+      } catch (error) {
+        console.error('Failed to check Gmail connection:', error);
+      } finally {
+        setGmailLoading(false);
+      }
+    };
+
+    checkGmailConnection();
+  }, [getToken]);
+
+  const handleTestFetchMessages = async () => {
+    setTestLoading(true);
+    setTestResult(null);
+    try {
+      const token = await getToken();
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch('/api/gmail/messages', {
+        headers,
+      });
+
+      const status = response.status;
+      const data = await response.json();
+
+      if (!response.ok) {
+        setTestResult({
+          status,
+          messageCount: 0,
+          messageIds: [],
+          error: data.error || `HTTP ${status} Error`,
+        });
+        return;
+      }
+
+      const messages = Array.isArray(data.messages) ? data.messages : [];
+      const messageIds = messages
+        .map((m: { id?: string }) => m.id)
+        .filter(Boolean) as string[];
+
+      setTestResult({
+        status,
+        messageCount: messages.length,
+        messageIds,
+        resultSizeEstimate: data.resultSizeEstimate,
+        nextPageToken: data.nextPageToken ?? null,
+      });
+    } catch (err) {
+      setTestResult({
+        status: 0,
+        messageCount: 0,
+        messageIds: [],
+        error: err instanceof Error ? err.message : 'Failed to fetch messages',
+      });
+    } finally {
+      setTestLoading(false);
+    }
+  };
+
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -17,6 +119,7 @@ export default function Settings() {
         setIsModalOpen(false);
       }
     };
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isModalOpen]);
@@ -93,17 +196,41 @@ export default function Settings() {
                     <h3 className="font-sans-display text-base font-bold text-[var(--cf-text)]">
                       Gmail Integration
                     </h3>
-                    <Badge variant="neutral" className="text-[10px]">COMING SOON</Badge>
+                    {gmailLoading ? (
+                      <Badge variant="neutral" className="text-[10px]">
+                        Checking...
+                      </Badge>
+                    ) : gmailConnected ? (
+                      <Badge variant="success" className="text-[10px]">
+                        Connected
+                      </Badge>
+                    ) : (
+                      <Badge variant="neutral" className="text-[10px]">
+                        Disconnected
+                      </Badge>
+                    )}
                   </div>
                   <p className="mt-1 text-sm text-[var(--cf-text-secondary)] max-w-lg">
-                    CampusFlow can automatically identify important emails and turn them into organized campus notices.
+                    {gmailConnected && gmailEmail 
+                      ? `Syncing campus notices from ${gmailEmail}.` 
+                      : 'CampusFlow can automatically identify important emails and turn them into organized campus notices.'}
                   </p>
                 </div>
               </div>
               <div className="shrink-0">
-                <Button variant="outline" onClick={() => setIsModalOpen(true)}>
-                  Integration Details
-                </Button>
+                {gmailLoading ? (
+                  <Button disabled variant="secondary">
+                    Loading...
+                  </Button>
+                ) : gmailConnected ? (
+                  <Button variant="secondary" disabled>
+                    Connected
+                  </Button>
+                ) : (
+                  <Button onClick={() => setIsModalOpen(true)}>
+                    Connect Gmail
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -155,6 +282,77 @@ export default function Settings() {
                   </p>
                 </div>
               </div>
+            </div>
+
+            {/* Dev Only: Test Gmail Message Retrieval */}
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded">
+                      DEV / TEST ONLY
+                    </span>
+                    <h4 className="font-sans-display text-xs font-bold text-[var(--cf-text)]">
+                      Test Gmail Message Retrieval (GET /api/gmail/messages)
+                    </h4>
+                  </div>
+                  <p className="text-xs text-[var(--cf-text-secondary)] mt-1">
+                    Fetch up to 5 message metadata references using your authenticated session.
+                  </p>
+                </div>
+                <Button
+                  onClick={handleTestFetchMessages}
+                  disabled={testLoading}
+                  variant="secondary"
+                  size="sm"
+                >
+                  {testLoading ? 'Fetching...' : 'Test GET Messages'}
+                </Button>
+              </div>
+
+              {testResult && (
+                <div className="mt-3 rounded-lg bg-[var(--cf-surface-muted)] p-3 border border-[var(--cf-border-subtle)] text-xs font-mono space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-[var(--cf-text-secondary)]">HTTP Status:</span>
+                    <span className={testResult.status === 200 ? 'text-[var(--cf-success)] font-bold' : 'text-rose-400 font-bold'}>
+                      {testResult.status}
+                    </span>
+                  </div>
+
+                  {testResult.error ? (
+                    <div className="text-rose-400">
+                      Error: {testResult.error}
+                    </div>
+                  ) : (
+                    <>
+                      <div>
+                        <span className="font-semibold text-[var(--cf-text-secondary)]">Messages Returned:</span>{' '}
+                        <span className="text-[var(--cf-text)]">{testResult.messageCount}</span>
+                      </div>
+                      <div>
+                        <span className="font-semibold text-[var(--cf-text-secondary)]">Result Size Estimate:</span>{' '}
+                        <span className="text-[var(--cf-text)]">{testResult.resultSizeEstimate ?? 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="font-semibold text-[var(--cf-text-secondary)]">Next Page Token:</span>{' '}
+                        <span className="text-[var(--cf-text)]">{testResult.nextPageToken || 'None (null)'}</span>
+                      </div>
+                      <div>
+                        <span className="font-semibold text-[var(--cf-text-secondary)]">Message IDs:</span>
+                        {testResult.messageIds.length > 0 ? (
+                          <ul className="list-disc list-inside mt-1 space-y-0.5 text-[var(--cf-text)] font-sans text-xs">
+                            {testResult.messageIds.map((id) => (
+                              <li key={id} className="font-mono">{id}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <span className="text-[var(--cf-text-tertiary)] ml-1 font-sans">None</span>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </Card>
         </section>
@@ -209,7 +407,7 @@ export default function Settings() {
         </Card>
       )}
 
-      {/* Coming Soon Modal */}
+      {/* Gmail Connection Modal */}
       {isModalOpen && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[var(--cf-overlay)] transition-opacity backdrop-blur-xs"
@@ -228,7 +426,7 @@ export default function Settings() {
           >
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-sans-display text-base font-bold text-[var(--cf-text)]">
-                Gmail Sync in Development
+                Connect Gmail
               </h2>
               <button 
                 type="button"
@@ -241,14 +439,17 @@ export default function Settings() {
             </div>
             
             <p className="mb-5 font-reading text-xs leading-relaxed text-[var(--cf-text-secondary)]">
-              "CampusFlow can automatically identify important emails and turn them into organized campus notices."
+              CampusFlow can automatically identify important emails and turn them into organized campus notices.
               <br /><br />
-              OAuth integration will be available in an upcoming update following Google Workspace verification.
+              Connect your Gmail account to let CampusFlow securely access relevant campus emails.
             </p>
             
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
               <Button onClick={() => setIsModalOpen(false)} variant="secondary" size="sm">
-                Got it
+                Cancel
+              </Button>
+              <Button onClick={() => { window.location.href = '/api/gmail/connect'; }} size="sm">
+                Connect Gmail
               </Button>
             </div>
           </motion.div>

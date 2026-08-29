@@ -46,6 +46,17 @@ export function createTestPool(): pg.Pool {
       source_text TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE gmail_connections (
+      id UUID PRIMARY KEY,
+      user_id TEXT NOT NULL UNIQUE,
+      google_email TEXT NOT NULL,
+      access_token TEXT NOT NULL,
+      refresh_token TEXT NOT NULL,
+      expiry_date BIGINT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   const { Pool } = db.adapters.createPg();
