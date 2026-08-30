@@ -1,4 +1,4 @@
-import { BookOpen, CheckSquare, LayoutDashboard, Radio, Settings, type LucideIcon } from 'lucide-react';
+import { Bell, BookOpen, CheckSquare, LayoutDashboard, Radio, Settings, type LucideIcon } from 'lucide-react';
 
 export type AppNavItem = {
   path: string;
@@ -10,11 +10,13 @@ export type AppNavItem = {
 /** Desktop order per design spec; shared with bottom tabs. */
 export const APP_NAV_ITEMS: AppNavItem[] = [
   { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', shortLabel: 'Dashboard' },
+  { path: '/notice-board', icon: Bell, label: 'Notice Board', shortLabel: 'Notices' },
   { path: '/campus-feed', icon: Radio, label: 'Campus Feed', shortLabel: 'Feed' },
   { path: '/assignments', icon: CheckSquare, label: 'Assignments', shortLabel: 'Assignments' },
   { path: '/courses', icon: BookOpen, label: 'Courses', shortLabel: 'Courses' },
   { path: '/settings', icon: Settings, label: 'Settings', shortLabel: 'Settings' },
 ];
+
 
 export function isNavActive(pathname: string, path: string): boolean {
   return pathname === path;

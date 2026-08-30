@@ -24,15 +24,26 @@ export const campusApi = {
     return res.json();
   },
 
-  delete: async (token: string, id: string): Promise<void> => {
-    const res = await fetch(`/api/campus-items/${id}`, {
+  delete: async (token: string, id: string, sourceType?: 'notice' | 'personal', role?: string): Promise<void> => {
+    const endpoint = sourceType === 'notice' ? `/api/notices/${id}` : `/api/campus-items/${id}`;
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${token}`,
+    };
+    if (role) {
+      headers['x-user-role'] = role;
+    }
+
+    const res = await fetch(endpoint, {
       method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
+      headers,
     });
-    if (!res.ok) throw new Error('Failed to delete item');
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `Failed to delete item (HTTP ${res.status})`);
+    }
   },
+
 
   analyzeNotice: async (token: string, text: string): Promise<Partial<CampusItem>> => {
     const res = await fetch('/api/ai/analyze', {

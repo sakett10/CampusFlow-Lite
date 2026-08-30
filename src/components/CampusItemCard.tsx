@@ -70,11 +70,12 @@ export default function CampusItemCard({ item, onDelete }: CampusItemCardProps) 
 
   const STATUS_BADGE_CONFIG: Record<EventStatus, { label: string | null; variant: BadgeVariant }> = {
     UNKNOWN: { label: null, variant: 'neutral' },
-    EVENT_ENDED: { label: 'Event Ended', variant: 'neutral' },
+    EVENT_ENDED: { label: null, variant: 'neutral' },
     UPCOMING: { label: 'Upcoming', variant: 'neutral' },
     REGISTRATION_OPEN: { label: 'Registration Open', variant: 'success' },
     REGISTRATION_CLOSING_SOON: { label: 'Closing Soon', variant: 'warning' },
   };
+
 
   const statusConfig = STATUS_BADGE_CONFIG[eventStatus];
 

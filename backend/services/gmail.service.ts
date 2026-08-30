@@ -1,5 +1,27 @@
 import { google } from 'googleapis';
 import jwt from 'jsonwebtoken';
+import { randomUUID } from 'node:crypto';
+import { pool } from '../db.js';
+import type { GmailSyncStats, StructuredGmailMessage } from '../types.js';
+
+import { noticeAnalyzerService } from './noticeAnalyzer.service.js';
+import {
+  noticesService,
+  DuplicateNoticeError,
+  NoticeSuppressedError,
+  isPersonalOrNonNotice,
+  isNoticeSuppressed,
+  generateNoticeFingerprint,
+} from './notices.service.js';
+import { NoticeValidationError } from './noticeValidator.js';
+import { notificationsService } from './notifications.service.js';
+import { campusEmailsService } from './campusEmails.service.js';
+
+
+
+
+
+
 
 const clientId = process.env.GOOGLE_CLIENT_ID;
 const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -235,4 +257,265 @@ export function parseGmailMessageDetails(
     bodyText,
   };
 }
+
+export class GmailNotConnectedError extends Error {
+  constructor(message = 'Gmail account is not connected') {
+    super(message);
+    this.name = 'GmailNotConnectedError';
+  }
+}
+
+export const isGmailMessageProcessed = async (
+  userId: string,
+  gmailMessageId: string,
+): Promise<boolean> => {
+  const { rows } = await pool.query(
+    'SELECT 1 FROM processed_gmail_messages WHERE user_id = $1 AND gmail_message_id = $2 LIMIT 1',
+    [userId, gmailMessageId],
+  );
+  return rows.length > 0;
+};
+
+export const markGmailMessageAsProcessed = async (
+  userId: string,
+  gmailMessageId: string,
+): Promise<void> => {
+  await pool.query(
+    `
+    INSERT INTO processed_gmail_messages (
+      id,
+      user_id,
+      gmail_message_id
+    )
+    VALUES ($1, $2, $3)
+    ON CONFLICT (user_id, gmail_message_id)
+    DO NOTHING
+    `,
+    [randomUUID(), userId, gmailMessageId],
+  );
+};
+
+export const toStructuredGmailMessage = (
+  detail: SafeGmailMessageDetail,
+): StructuredGmailMessage => ({
+  id: detail.id,
+  threadId: detail.threadId,
+  sender: detail.from,
+  recipient: detail.to,
+  subject: detail.subject,
+  date: detail.date,
+  snippet: detail.snippet,
+  bodyText: detail.bodyText,
+  sourceMessageId: detail.id,
+});
+
+export const syncGmailMessagesForUser = async (
+  userId: string,
+  batchSize = 30,
+): Promise<GmailSyncStats> => {
+  const { rows } = await pool.query(
+    `
+    SELECT id, google_email, access_token, refresh_token, expiry_date
+    FROM gmail_connections
+    WHERE user_id = $1
+    `,
+    [userId],
+  );
+
+  if (rows.length === 0) {
+    throw new GmailNotConnectedError('Gmail account is not connected');
+  }
+
+  const conn = rows[0];
+
+  const gmail = createAuthenticatedGmailClient({
+    accessToken: conn.access_token,
+    refreshToken: conn.refresh_token,
+    expiryDate: conn.expiry_date,
+  });
+
+  // Fetch messages with pagination support up to batchSize
+  const rawMessages: Array<{ id?: string | null; threadId?: string | null }> = [];
+  let pageToken: string | undefined = undefined;
+
+  do {
+    const pageSize = Math.min(batchSize - rawMessages.length, 50);
+    const listResponse = await gmail.users.messages.list({
+      userId: 'me',
+      maxResults: pageSize,
+      pageToken,
+    });
+
+    const pageMessages = listResponse.data.messages || [];
+    rawMessages.push(...pageMessages);
+    pageToken = listResponse.data.nextPageToken || undefined;
+  } while (pageToken && rawMessages.length < batchSize);
+
+  let checked = 0;
+  let newMessages = 0;
+  let skipped = 0;
+  let processed = 0;
+  let failed = 0;
+  let emailsPersisted = 0;
+  let analysesFailed = 0;
+  let noticesCreated = 0;
+  let pendingNoticesCount = 0;
+
+  for (const rawMsg of rawMessages) {
+    if (!rawMsg || !rawMsg.id || typeof rawMsg.id !== 'string') {
+      continue;
+    }
+    checked++;
+
+    const alreadyProcessed = await isGmailMessageProcessed(userId, rawMsg.id);
+    if (alreadyProcessed) {
+      skipped++;
+      continue;
+    }
+
+    // Check if email already exists in campus_emails with completed analysis
+    const existingEmail = await campusEmailsService.getBySourceMessageId(conn.google_email, rawMsg.id);
+    if (existingEmail && existingEmail.analysisStatus === 'completed') {
+      await markGmailMessageAsProcessed(userId, rawMsg.id);
+      skipped++;
+      continue;
+    }
+
+    newMessages++;
+
+    try {
+      const messageResponse = await gmail.users.messages.get({
+        userId: 'me',
+        id: rawMsg.id,
+        format: 'full',
+      });
+
+      const parsedDetails = parseGmailMessageDetails(messageResponse.data, rawMsg.id);
+
+      // 1. Persist the raw parsed email into campus_emails FIRST
+      await campusEmailsService.persistEmail({
+        userId,
+        sourceAccountEmail: conn.google_email,
+        sourceMessageId: rawMsg.id,
+        sourceThreadId: parsedDetails.threadId,
+        senderEmail: parsedDetails.from,
+        senderName: parsedDetails.from,
+        subject: parsedDetails.subject,
+        receivedAt: parsedDetails.date,
+        bodyText: parsedDetails.body || parsedDetails.bodyText || parsedDetails.snippet,
+        snippet: parsedDetails.snippet,
+      });
+      emailsPersisted++;
+
+      // 2. Non-blocking AI analysis
+      try {
+        const structuredMessage = toStructuredGmailMessage(parsedDetails);
+        const candidate = await noticeAnalyzerService.analyze(structuredMessage);
+        await campusEmailsService.updateAnalysisSuccess(conn.google_email, rawMsg.id, candidate);
+
+        // 3. Only create campus notices for legitimate, non-personal, campus-wide communications
+        if (!isPersonalOrNonNotice(candidate)) {
+          const dates = candidate.importantDates || [];
+          const eventDate = dates.length > 0 ? dates[0].date : null;
+          const fingerprint = generateNoticeFingerprint(
+            candidate.title,
+            eventDate,
+            candidate.venue,
+            candidate.source?.sender,
+          );
+
+          const suppressed = await isNoticeSuppressed(conn.google_email, rawMsg.id, fingerprint);
+          if (!suppressed) {
+            try {
+              const createdNotice = await noticesService.createFromCandidate(userId, candidate, {
+                connectionId: conn.id,
+                accountEmail: conn.google_email,
+                initialStatus: 'published',
+              });
+              noticesCreated++;
+              if (createdNotice.status === 'pending') {
+                pendingNoticesCount++;
+              }
+            } catch (noticeErr) {
+              if (
+                !(noticeErr instanceof DuplicateNoticeError) &&
+                !(noticeErr instanceof NoticeSuppressedError) &&
+                !(noticeErr instanceof NoticeValidationError)
+              ) {
+                console.error('Notice creation error:', noticeErr);
+              }
+            }
+          }
+        }
+      } catch (analysisErr) {
+
+
+        if (analysisErr instanceof NoticeValidationError) {
+          // Valid non-notice email: keep email in campus_emails and record non-notice analysis status
+          await campusEmailsService.updateAnalysisFailure(
+            conn.google_email,
+            rawMsg.id,
+            'Non-notice email',
+          );
+        } else {
+
+          console.error(
+            `AI analysis failed for message ${rawMsg.id}, but email remains stored:`,
+            analysisErr instanceof Error ? analysisErr.message : String(analysisErr),
+          );
+          await campusEmailsService.updateAnalysisFailure(
+            conn.google_email,
+            rawMsg.id,
+            analysisErr instanceof Error ? analysisErr.message : 'AI analysis failed',
+          );
+          analysesFailed++;
+          failed++;
+          continue;
+        }
+      }
+
+      await markGmailMessageAsProcessed(userId, rawMsg.id);
+      processed++;
+
+
+    } catch (msgErr) {
+      console.error(
+        `Gmail fetch/persistence failed for message ${rawMsg.id}:`,
+        msgErr instanceof Error ? msgErr.message : String(msgErr),
+      );
+
+      if (msgErr instanceof DuplicateNoticeError || msgErr instanceof NoticeValidationError) {
+        await markGmailMessageAsProcessed(userId, rawMsg.id);
+        processed++;
+      } else {
+        // Transient API network error: do not mark processed so it retries
+        failed++;
+      }
+    }
+  }
+
+  // If new pending notices were generated, notify reviewers
+  if (pendingNoticesCount > 0) {
+    try {
+      await notificationsService.notifyPendingReview(pendingNoticesCount);
+    } catch (notifErr) {
+      console.error('Failed to dispatch pending notice reviewer notification:', notifErr);
+    }
+  }
+
+  return {
+    checked,
+    newMessages,
+    skipped,
+    processed,
+    failed,
+    emailsPersisted,
+    analysesFailed,
+    noticesCreated,
+  };
+};
+
+
+
+
 

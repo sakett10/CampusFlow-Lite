@@ -2,9 +2,13 @@ import { Outlet } from 'react-router-dom';
 import SidebarNav from './nav/SidebarNav';
 import TopBar from './nav/TopBar';
 import BottomTabNav from './nav/BottomTabNav';
+import NotificationBell from './NotificationBell';
 import { UserButton } from '@clerk/clerk-react';
+import { useGmailAutoSync } from '../hooks/useGmailAutoSync';
 
 export default function Layout() {
+  const { isSyncing, isConnected, lastSyncTime } = useGmailAutoSync();
+
   return (
     <div className="flex h-dvh max-w-full overflow-x-hidden bg-[var(--cf-bg)] font-[family-name:var(--cf-font-sans)] text-[var(--cf-text)]">
       {/* Desktop sidebar — fixed; main scrolls independently */}
@@ -26,7 +30,22 @@ export default function Layout() {
               </p>
             </div>
           </div>
+          <NotificationBell />
         </div>
+
+        {isConnected && (
+          <div className="px-6 py-2 border-b border-[var(--cf-border-subtle)] bg-[var(--cf-surface-muted)]/50 flex items-center justify-between text-[10px] font-mono text-[var(--cf-text-secondary)]">
+            <span className="flex items-center gap-1.5">
+              <span className={`h-1.5 w-1.5 rounded-full ${isSyncing ? 'bg-amber-400 animate-ping' : 'bg-emerald-400'}`} />
+              {isSyncing ? 'Syncing Gmail...' : 'Gmail Auto-Sync'}
+            </span>
+            {lastSyncTime && (
+              <span className="text-[var(--cf-text-tertiary)]">
+                {lastSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto py-4">
           <SidebarNav />
@@ -39,6 +58,7 @@ export default function Layout() {
           </div>
         </div>
       </aside>
+
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:pl-[260px]">
         <div className="lg:hidden shrink-0">

@@ -1,13 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { CampusItem } from '../lib/types';
 import { campusApi } from '../api/campusApi';
-import { useAuth } from '@clerk/clerk-react';
+import { useAuth, useUser } from '@clerk/clerk-react';
 
 export function useCampusFeed() {
   const [items, setItems] = useState<CampusItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { getToken } = useAuth();
+  const { user } = useUser();
+
+  const isReviewer = Boolean(
+    user?.publicMetadata?.role === 'reviewer' ||
+    user?.publicMetadata?.role === 'admin'
+  );
 
   const loadItems = useCallback(async () => {
     setIsLoading(true);
@@ -38,7 +44,7 @@ export function useCampusFeed() {
     if (!token) throw new Error('Authentication required');
 
     const newItem = await campusApi.create(token, item);
-    setItems(prev => [newItem, ...prev]);
+    setItems((prev) => [newItem, ...prev]);
     return newItem;
   };
 
@@ -47,8 +53,12 @@ export function useCampusFeed() {
       const token = await getToken();
       if (!token) throw new Error('Authentication required');
 
-      await campusApi.delete(token, id);
-      setItems(prev => prev.filter(item => item.id !== id));
+      const targetItem = items.find((i) => i.id === id);
+      const sourceType = targetItem?.sourceType || 'personal';
+      const role = (user?.publicMetadata?.role as string) || (isReviewer ? 'reviewer' : undefined);
+
+      await campusApi.delete(token, id, sourceType, role);
+      setItems((prev) => prev.filter((item) => item.id !== id));
     } catch (err: unknown) {
       console.error('Failed to delete item:', err);
       throw err;
@@ -57,3 +67,4 @@ export function useCampusFeed() {
 
   return { items, isLoading, error, addItem, deleteItem, refresh: loadItems };
 }
+

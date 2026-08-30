@@ -1,4 +1,5 @@
 import { UserButton } from '@clerk/clerk-react';
+import NotificationBell from '../NotificationBell';
 
 export default function TopBar() {
   return (
@@ -13,7 +14,11 @@ export default function TopBar() {
           CampusFlow
         </p>
       </div>
-      <UserButton />
+      <div className="flex items-center gap-2">
+        <NotificationBell />
+        <UserButton />
+      </div>
     </header>
   );
 }
+

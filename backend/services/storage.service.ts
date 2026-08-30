@@ -20,45 +20,169 @@ import type { CampusItem } from '../types.js';
 //   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 // );
 
+function isPersonalCertificateEmail(row: {
+  subject?: string | null;
+  summary?: string | null;
+  category?: string | null;
+  audience?: string | null;
+}): boolean {
+  const sub = (row.subject || '').toLowerCase();
+  const sum = (row.summary || '').toLowerCase();
+  const aud = (row.audience || '').toLowerCase();
+  const cat = (row.category || '').toLowerCase();
+
+  return (
+    sub.includes('certificate verification') ||
+    sub.includes('fresher - certificate') ||
+    sum.includes('certificate verification') ||
+    sum.includes('fresher - certificate') ||
+    sub.includes('missing document') ||
+    sum.includes('missing document') ||
+    sub.includes('candidate [') ||
+    sum.includes('candidate [') ||
+    sub.includes('physical fitness') ||
+    sum.includes('physical fitness') ||
+    sub.includes('provisional admission') ||
+    sum.includes('provisional admission') ||
+    aud.includes('individual') ||
+    aud.includes('candidate') ||
+    cat === 'admission'
+  );
+}
+
+function isItemActive(item: { date?: string | null; endTime?: string | null; registrationDeadline?: string | null }): boolean {
+  const dateStr = item.date || item.registrationDeadline;
+  if (!dateStr) return true;
+
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return true;
+
+  const [year, month, day] = parts.map(Number);
+  if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) return true;
+
+  let hours = 23;
+  let minutes = 59;
+  if (item.endTime) {
+    const timeParts = item.endTime.split(':');
+    if (timeParts.length >= 2) {
+      const [h, m] = timeParts.map(Number);
+      if (!Number.isNaN(h) && !Number.isNaN(m)) {
+        hours = h;
+        minutes = m;
+      }
+    }
+  }
+
+  const eventEnd = new Date(year, month - 1, day, hours, minutes, 0, 0);
+  const expiresAt = eventEnd.getTime() + (item.endTime ? 60 * 60 * 1000 : 0);
+  return expiresAt > Date.now();
+}
+
+
 export const storageService = {
   getAll: async (userId: string): Promise<CampusItem[]> => {
-    const { rows } = await pool.query('SELECT * FROM campus_items WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
-    const now = Date.now();
+    // 1. Personal user items
+    let personalItems: CampusItem[] = [];
+    try {
+      const { rows } = await pool.query(
+        'SELECT * FROM campus_items WHERE user_id = $1 ORDER BY created_at DESC',
+        [userId],
+      );
 
-    return rows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      type: row.type,
-      description: row.description,
-      date: row.date,
-      startTime: row.start_time,
-      endTime: row.end_time,
-      registrationDeadline: row.registration_deadline,
-      venue: row.venue,
-      eligibility: row.eligibility,
-      organizer: row.organizer,
-      importantActions: row.important_actions || [],
-      sourceText: row.source_text
-    })).filter(item => {
-      if (!item.date || !item.endTime) return true;
+      personalItems = rows
+        .map((row) => ({
+          id: row.id,
+          title: row.title,
+          type: row.type,
+          description: row.description,
+          date: row.date,
+          startTime: row.start_time,
+          endTime: row.end_time,
+          registrationDeadline: row.registration_deadline,
+          venue: row.venue,
+          eligibility: row.eligibility,
+          organizer: row.organizer,
+          importantActions: row.important_actions || [],
+          sourceText: row.source_text,
+          sourceType: 'personal' as const,
+        }))
+        .filter(isItemActive);
+    } catch {
+      // Continue if query fails
+    }
 
-      const parts = item.date.split('-');
-      if (parts.length !== 3) return true;
+    // 2. Campus-wide published notices (Authoritative curated notices only)
+    let publishedNoticeItems: CampusItem[] = [];
+    const seenItemKeys = new Set<string>();
 
-      const timeParts = item.endTime.split(':');
-      if (timeParts.length < 2) return true;
+    try {
+      const { rows: noticeRows } = await pool.query(
+        `
+        SELECT * FROM notices 
+        WHERE status = 'published' 
+        ORDER BY (CASE WHEN published_at IS NOT NULL THEN published_at ELSE created_at END) DESC, created_at DESC
+        `,
+      );
 
-      const [year, month, day] = parts.map(Number);
-      const [hours, minutes] = timeParts.map(Number);
+      publishedNoticeItems = noticeRows
+        .filter((row) => !isPersonalCertificateEmail(row))
+        .map((row) => {
+          let itemType: CampusItem['type'] = 'ANNOUNCEMENT';
+          if (row.category === 'exam' || row.category === 'assignment') {
+            itemType = 'DEADLINE';
+          } else if (row.category === 'event') {
+            itemType = 'EVENT';
+          }
 
-      if (Number.isNaN(year) || Number.isNaN(hours)) return true;
+          const dates = (row.important_dates as Array<{ label: string; date: string }>) || [];
+          const eventDate = dates.length > 0 ? dates[0].date : null;
 
-      const endDate = new Date(year, month - 1, day, hours, minutes, 0, 0);
-      const expiresAt = endDate.getTime() + 60 * 60 * 1000; // end time + 1 hour
+          const deadlineObj = dates.find(
+            (d) =>
+              d.label.toLowerCase().includes('deadline') ||
+              d.label.toLowerCase().includes('last date') ||
+              d.label.toLowerCase().includes('due'),
+          );
+          const regDeadline = deadlineObj ? deadlineObj.date : null;
 
-      return expiresAt > now;
-    });
+          const actions = row.action_required ? [row.action_required as string] : [];
+
+          return {
+            id: row.id,
+            title: row.title,
+            type: itemType,
+            description: row.summary,
+            date: eventDate,
+            startTime: null,
+            endTime: null,
+            registrationDeadline: regDeadline,
+            venue: row.venue || null,
+            eligibility: row.audience || null,
+            organizer: row.source_sender || 'University Administration',
+            importantActions: actions,
+            sourceText: row.summary,
+            sourceType: 'notice' as const,
+          };
+        })
+        .filter(isItemActive);
+
+    } catch {
+      // Continue if query fails
+    }
+
+    // 3. Merge published notices and personal items with deduplication
+    const result: CampusItem[] = [];
+    for (const item of [...publishedNoticeItems, ...personalItems]) {
+      const key = `${(item.title || '').trim().toLowerCase()}|${item.date || ''}`;
+      if (!seenItemKeys.has(key)) {
+        seenItemKeys.add(key);
+        result.push(item);
+      }
+    }
+
+    return result;
   },
+
 
   add: async (userId: string, item: Omit<CampusItem, 'id'>): Promise<CampusItem> => {
     const id = randomUUID();

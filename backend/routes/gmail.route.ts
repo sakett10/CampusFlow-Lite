@@ -8,9 +8,15 @@ import {
   verifyOAuthState,
   createAuthenticatedGmailClient,
   parseGmailMessageDetails,
+  toStructuredGmailMessage,
+  syncGmailMessagesForUser,
+  GmailNotConnectedError,
 } from '../services/gmail.service.js';
+import { noticeAnalyzerService } from '../services/noticeAnalyzer.service.js';
+import { NoticeValidationError } from '../services/noticeValidator.js';
 import { pool } from '../db.js';
 import { randomUUID } from 'node:crypto';
+
 
 const router = Router();
 
@@ -223,9 +229,25 @@ router.get('/messages', requireAuth(), async (req, res) => {
       maxResults: 5,
     });
 
+    const rawMessages = response.data.messages || [];
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[Gmail messages.list] Retrieved ${rawMessages.length} message references:`);
+      rawMessages.forEach((m, index) => {
+        console.log(`  [${index}] id: ${m.id}, threadId: ${m.threadId}`);
+      });
+    }
+
+    const formattedMessages = rawMessages
+      .filter((m) => m && typeof m.id === 'string' && m.id.trim())
+      .map((m) => ({
+        id: m.id as string,
+        threadId: m.threadId ?? null,
+      }));
+
     return res.json({
-      messages: response.data.messages || [],
-      resultSizeEstimate: response.data.resultSizeEstimate ?? 0,
+      messages: formattedMessages,
+      resultSizeEstimate: response.data.resultSizeEstimate ?? formattedMessages.length,
       nextPageToken: response.data.nextPageToken ?? null,
     });
   } catch (error) {
@@ -291,10 +313,17 @@ router.get('/messages/:messageId', requireAuth(), async (req, res) => {
       format: 'full',
     });
 
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(
+        `[Gmail messages.get] requestedId: ${messageId}, returnedId: ${response.data.id}, threadId: ${response.data.threadId}, matches: ${messageId === response.data.id}`,
+      );
+    }
+
     const messageDetails = parseGmailMessageDetails(
       response.data,
       messageId,
     );
+
 
     return res.json(messageDetails);
   } catch (error) {
@@ -324,4 +353,133 @@ router.get('/messages/:messageId', requireAuth(), async (req, res) => {
   }
 });
 
+/**
+ * Synchronize Gmail messages
+ * POST /api/gmail/sync
+ */
+router.post('/sync', requireAuth(), async (req, res) => {
+  const { userId } = getAuth(req);
+
+  if (!userId) {
+    return res.status(401).json({
+      error: 'Unauthorized',
+    });
+  }
+
+  try {
+    const stats = await syncGmailMessagesForUser(userId, 30);
+    return res.json(stats);
+
+  } catch (error) {
+    if (error instanceof GmailNotConnectedError) {
+      return res.status(404).json({
+        error: 'Gmail account is not connected',
+      });
+    }
+
+    const errorDetails = error instanceof Error ? error.message : String(error);
+    console.error('Failed to sync Gmail messages:', error);
+
+    return res.status(500).json({
+      error: 'Failed to sync Gmail messages',
+      details: errorDetails,
+    });
+  }
+});
+
+
+/**
+ * Analyze Gmail message into NoticeCandidate
+ * POST /api/gmail/analyze/:messageId
+ */
+router.post('/analyze/:messageId', requireAuth(), async (req, res) => {
+  const { userId } = getAuth(req);
+
+  if (!userId) {
+    return res.status(401).json({
+      error: 'Unauthorized',
+    });
+  }
+
+  const { messageId } = req.params;
+  if (!messageId || typeof messageId !== 'string') {
+    return res.status(400).json({
+      error: 'Invalid message ID',
+    });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `
+      SELECT access_token, refresh_token, expiry_date
+      FROM gmail_connections
+      WHERE user_id = $1
+      `,
+      [userId],
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        error: 'Gmail account is not connected',
+      });
+    }
+
+    const { access_token, refresh_token, expiry_date } = rows[0];
+
+    const gmail = createAuthenticatedGmailClient({
+      accessToken: access_token,
+      refreshToken: refresh_token,
+      expiryDate: expiry_date,
+    });
+
+    const response = await gmail.users.messages.get({
+      userId: 'me',
+      id: messageId,
+      format: 'full',
+    });
+
+    const messageDetails = parseGmailMessageDetails(
+      response.data,
+      messageId,
+    );
+
+    const structuredMessage = toStructuredGmailMessage(messageDetails);
+    const candidate = await noticeAnalyzerService.analyze(structuredMessage);
+
+    return res.json(candidate);
+  } catch (error) {
+    if (
+      error &&
+      typeof error === 'object' &&
+      ('code' in error || 'status' in error)
+    ) {
+      const statusCode =
+        (error as { code?: number; status?: number }).code ||
+        (error as { code?: number; status?: number }).status;
+      if (statusCode === 404) {
+        return res.status(404).json({
+          error: 'Gmail message not found',
+        });
+      }
+    }
+
+    if (error instanceof NoticeValidationError) {
+      return res.status(422).json({
+        error: error.message,
+        fieldErrors: error.fieldErrors,
+      });
+    }
+
+    console.error(
+      'Failed to analyze Gmail message:',
+      error instanceof Error ? error.message : 'Unknown error',
+    );
+
+    return res.status(500).json({
+      error: 'Failed to analyze Gmail message',
+    });
+  }
+});
+
 export default router;
+
