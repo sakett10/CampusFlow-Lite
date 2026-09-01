@@ -29,12 +29,8 @@ export function useNotices(initialFilters?: NoticeFiltersState) {
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
-    const role = (user?.publicMetadata?.role as string) || (isReviewer ? 'reviewer' : undefined);
-    if (role) {
-      headers['x-user-role'] = role;
-    }
     return headers;
-  }, [getToken, user, isReviewer]);
+  }, [getToken]);
 
   const loadNotices = useCallback(async (customFilters?: NoticeFiltersState) => {
     setIsLoading(true);

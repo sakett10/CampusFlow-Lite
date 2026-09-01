@@ -81,7 +81,6 @@ describe('useCampusFeed Hook and Delete Routing', () => {
       'mock_token_123',
       'cff9d47b-c0f8-4c16-8d94-20209c8d5918',
       'notice',
-      'reviewer',
     );
 
     // Notice item is removed from hook state
@@ -97,7 +96,6 @@ describe('useCampusFeed Hook and Delete Routing', () => {
       'mock_token_123',
       'pers_item_456',
       'personal',
-      'reviewer',
     );
 
     // Personal item is removed from hook state
@@ -113,12 +111,11 @@ describe('useCampusFeed Hook and Delete Routing', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     // Delete notice
-    await campusApi.delete('tok_1', 'notice_uuid_1', 'notice', 'reviewer');
+    await campusApi.delete('tok_1', 'notice_uuid_1', 'notice');
     expect(fetchMock).toHaveBeenCalledWith('/api/notices/notice_uuid_1', {
       method: 'DELETE',
       headers: {
         Authorization: 'Bearer tok_1',
-        'x-user-role': 'reviewer',
       },
     });
 

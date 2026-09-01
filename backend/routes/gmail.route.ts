@@ -17,11 +17,29 @@ import { NoticeValidationError } from '../services/noticeValidator.js';
 import { pool } from '../db.js';
 import { randomUUID } from 'node:crypto';
 
-
 const router = Router();
 
 /**
- * Start Gmail OAuth
+ * Generate Google OAuth authorization URL
+ * GET /api/gmail/auth-url
+ */
+router.get('/auth-url', requireAuth(), (req, res) => {
+  const { userId } = getAuth(req);
+
+  if (!userId) {
+    return res.status(401).json({
+      error: 'Unauthorized',
+    });
+  }
+
+  const state = createOAuthState(userId);
+  const authUrl = getGoogleAuthUrl(state);
+
+  return res.json({ url: authUrl });
+});
+
+/**
+ * Start Gmail OAuth (legacy browser redirect fallback)
  * GET /api/gmail/connect
  */
 router.get('/connect', requireAuth(), (req, res) => {
@@ -37,6 +55,61 @@ router.get('/connect', requireAuth(), (req, res) => {
   const authUrl = getGoogleAuthUrl(state);
 
   return res.redirect(authUrl);
+});
+
+/**
+ * Disconnect Gmail integration and revoke tokens
+ * POST /api/gmail/disconnect
+ */
+router.post('/disconnect', requireAuth(), async (req, res) => {
+  const { userId } = getAuth(req);
+
+  if (!userId) {
+    return res.status(401).json({
+      error: 'Unauthorized',
+    });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `
+      SELECT access_token, refresh_token
+      FROM gmail_connections
+      WHERE user_id = $1
+      `,
+      [userId],
+    );
+
+    if (rows.length > 0) {
+      const tokenToRevoke = rows[0].access_token || rows[0].refresh_token;
+      if (tokenToRevoke) {
+        try {
+          await gmailOAuth2Client.revokeToken(tokenToRevoke);
+        } catch (revokeError) {
+          // Token may already be expired or revoked externally; proceed with local deletion
+          console.warn('Google OAuth token revocation warning:', revokeError instanceof Error ? revokeError.message : revokeError);
+        }
+      }
+
+      await pool.query(
+        `
+        DELETE FROM gmail_connections
+        WHERE user_id = $1
+        `,
+        [userId],
+      );
+    }
+
+    return res.json({
+      success: true,
+      message: 'Gmail disconnected successfully',
+    });
+  } catch (error) {
+    console.error('Failed to disconnect Gmail:', error);
+    return res.status(500).json({
+      error: 'Failed to disconnect Gmail',
+    });
+  }
 });
 
 /**
@@ -132,8 +205,8 @@ router.get('/callback', async (req, res) => {
     );
 
     return res.redirect(
-  `${process.env.FRONTEND_URL}/settings?gmail=connected`,
-);
+      `${process.env.FRONTEND_URL}/settings?gmail=connected`,
+    );
   } catch (error) {
     console.error('Google OAuth callback failed:', error);
 
@@ -324,7 +397,6 @@ router.get('/messages/:messageId', requireAuth(), async (req, res) => {
       messageId,
     );
 
-
     return res.json(messageDetails);
   } catch (error) {
     if (
@@ -386,7 +458,6 @@ router.post('/sync', requireAuth(), async (req, res) => {
     });
   }
 });
-
 
 /**
  * Analyze Gmail message into NoticeCandidate
@@ -482,4 +553,3 @@ router.post('/analyze/:messageId', requireAuth(), async (req, res) => {
 });
 
 export default router;
-

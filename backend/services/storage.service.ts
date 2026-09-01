@@ -50,32 +50,98 @@ function isPersonalCertificateEmail(row: {
   );
 }
 
-function isItemActive(item: { date?: string | null; endTime?: string | null; registrationDeadline?: string | null }): boolean {
+export function parseDateString(dateStr: string): { year: number; month: number; day: number } | null {
+  if (!dateStr || typeof dateStr !== 'string') return null;
+  const trimmed = dateStr.trim();
+  if (!trimmed) return null;
+
+  // 1. ISO format: YYYY-MM-DD or YYYY/MM/DD
+  const isoMatch = trimmed.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (isoMatch) {
+    const year = Number(isoMatch[1]);
+    const month = Number(isoMatch[2]);
+    const day = Number(isoMatch[3]);
+    if (year >= 1970 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return { year, month, day };
+    }
+  }
+
+  // 2. Day-first formats: DD-MM-YYYY, DD/MM/YYYY, DD.MM.YYYY
+  const dmyMatch = trimmed.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/);
+  if (dmyMatch) {
+    const day = Number(dmyMatch[1]);
+    const month = Number(dmyMatch[2]);
+    const year = Number(dmyMatch[3]);
+    if (year >= 1970 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return { year, month, day };
+    }
+  }
+
+  // 3. Natural language formats (e.g. "25 September 2026", "September 25, 2026", "25 Sep 2026")
+  const parsed = new Date(trimmed);
+  if (!Number.isNaN(parsed.getTime())) {
+    return {
+      year: parsed.getFullYear(),
+      month: parsed.getMonth() + 1,
+      day: parsed.getDate(),
+    };
+  }
+
+  return null;
+}
+
+export function isItemActive(
+  item: { date?: string | null; endTime?: string | null; registrationDeadline?: string | null },
+  referenceNowMs?: number,
+): boolean {
   const dateStr = item.date || item.registrationDeadline;
   if (!dateStr) return true;
 
-  const parts = dateStr.split('-');
-  if (parts.length !== 3) return true;
-
-  const [year, month, day] = parts.map(Number);
-  if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) return true;
+  const parsed = parseDateString(dateStr);
+  if (!parsed) {
+    // If the date string cannot be determined or parsed, keep the item active rather than prematurely expiring it
+    return true;
+  }
 
   let hours = 23;
   let minutes = 59;
-  if (item.endTime) {
-    const timeParts = item.endTime.split(':');
-    if (timeParts.length >= 2) {
-      const [h, m] = timeParts.map(Number);
-      if (!Number.isNaN(h) && !Number.isNaN(m)) {
+  let hasEndTime = false;
+
+  if (item.endTime && typeof item.endTime === 'string') {
+    const rawEndTime = item.endTime.trim().toLowerCase();
+
+    // Check 12-hour AM/PM formats e.g. "5:00 PM", "5 PM", "2:30 pm"
+    const ampmMatch = rawEndTime.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/i);
+    if (ampmMatch) {
+      let h = Number(ampmMatch[1]);
+      const m = ampmMatch[2] ? Number(ampmMatch[2]) : 0;
+      const isPm = ampmMatch[3].toLowerCase() === 'pm';
+      if (isPm && h < 12) h += 12;
+      if (!isPm && h === 12) h = 0;
+      if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
         hours = h;
         minutes = m;
+        hasEndTime = true;
+      }
+    } else {
+      // Check 24-hour HH:mm
+      const timeParts = rawEndTime.split(':');
+      if (timeParts.length >= 2) {
+        const h = Number(timeParts[0]);
+        const m = Number(timeParts[1]);
+        if (!Number.isNaN(h) && !Number.isNaN(m) && h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+          hours = h;
+          minutes = m;
+          hasEndTime = true;
+        }
       }
     }
   }
 
-  const eventEnd = new Date(year, month - 1, day, hours, minutes, 0, 0);
-  const expiresAt = eventEnd.getTime() + (item.endTime ? 60 * 60 * 1000 : 0);
-  return expiresAt > Date.now();
+  const eventEnd = new Date(parsed.year, parsed.month - 1, parsed.day, hours, minutes, 0, 0);
+  const expiresAt = eventEnd.getTime() + (hasEndTime ? 60 * 60 * 1000 : 0);
+  const now = typeof referenceNowMs === 'number' && referenceNowMs > 0 ? referenceNowMs : Date.now();
+  return expiresAt > now;
 }
 
 
@@ -106,7 +172,7 @@ export const storageService = {
           sourceText: row.source_text,
           sourceType: 'personal' as const,
         }))
-        .filter(isItemActive);
+        .filter((item) => isItemActive(item));
     } catch {
       // Continue if query fails
     }
@@ -164,7 +230,7 @@ export const storageService = {
             sourceType: 'notice' as const,
           };
         })
-        .filter(isItemActive);
+        .filter((item) => isItemActive(item));
 
     } catch {
       // Continue if query fails

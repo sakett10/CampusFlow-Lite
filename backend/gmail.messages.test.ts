@@ -16,6 +16,7 @@ vi.mock('googleapis', () => {
   class MockOAuth2 {
     setCredentials = vi.fn();
     generateAuthUrl = vi.fn().mockReturnValue('https://mock-auth-url');
+    revokeToken = vi.fn().mockResolvedValue({});
     getToken = vi.fn().mockResolvedValue({
       tokens: {
         access_token: 'mock_access',
@@ -636,6 +637,61 @@ describe('GET /api/gmail/messages/:messageId', () => {
 
     expect(res.status).toBe(404);
     expect(mockGet).not.toHaveBeenCalled();
+  });
+
+  describe('GET /api/gmail/auth-url', () => {
+    it('returns Google OAuth URL when authenticated', async () => {
+      const res = await request(app)
+        .get('/api/gmail/auth-url')
+        .set('Authorization', 'Bearer user_A');
+
+      expect(res.status).toBe(200);
+      expect(res.body.url).toBeDefined();
+      expect(typeof res.body.url).toBe('string');
+      expect(res.body.url).toContain('https://mock-auth-url');
+    });
+
+    it('returns 401 Unauthenticated when not authenticated', async () => {
+      const res = await request(app).get('/api/gmail/auth-url');
+      expect(res.status).toBe(401);
+    });
+  });
+
+  describe('POST /api/gmail/disconnect', () => {
+    it('disconnects and deletes user connection without affecting other users', async () => {
+      // Connect User A and User B
+      await pool.query(
+        `
+        INSERT INTO gmail_connections (id, user_id, google_email, access_token, refresh_token, expiry_date)
+        VALUES
+          ($1, 'user_A', 'userA@vitstudent.ac.in', 'token_A', 'refresh_A', 1700000000),
+          ($2, 'user_B', 'userB@vitstudent.ac.in', 'token_B', 'refresh_B', 1700000000)
+        `,
+        [randomUUID(), randomUUID()],
+      );
+
+      // User A disconnects
+      const res = await request(app)
+        .post('/api/gmail/disconnect')
+        .set('Authorization', 'Bearer user_A');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+
+      // User A is disconnected
+      const { rows: rowsA } = await pool.query('SELECT * FROM gmail_connections WHERE user_id = $1', ['user_A']);
+      expect(rowsA).toHaveLength(0);
+
+      // User B remains connected
+      const { rows: rowsB } = await pool.query('SELECT * FROM gmail_connections WHERE user_id = $1', ['user_B']);
+      expect(rowsB).toHaveLength(1);
+      expect(rowsB[0].user_id).toBe('user_B');
+    });
+
+    it('returns 401 when unauthenticated', async () => {
+      const res = await request(app).post('/api/gmail/disconnect');
+      expect(res.status).toBe(401);
+    });
   });
 });
 

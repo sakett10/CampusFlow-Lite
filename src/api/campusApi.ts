@@ -24,14 +24,11 @@ export const campusApi = {
     return res.json();
   },
 
-  delete: async (token: string, id: string, sourceType?: 'notice' | 'personal', role?: string): Promise<void> => {
+  delete: async (token: string, id: string, sourceType?: 'notice' | 'personal'): Promise<void> => {
     const endpoint = sourceType === 'notice' ? `/api/notices/${id}` : `/api/campus-items/${id}`;
     const headers: Record<string, string> = {
       Authorization: `Bearer ${token}`,
     };
-    if (role) {
-      headers['x-user-role'] = role;
-    }
 
     const res = await fetch(endpoint, {
       method: 'DELETE',

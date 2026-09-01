@@ -1,19 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { CampusItem } from '../lib/types';
 import { campusApi } from '../api/campusApi';
-import { useAuth, useUser } from '@clerk/clerk-react';
+import { useAuth } from '@clerk/clerk-react';
 
 export function useCampusFeed() {
   const [items, setItems] = useState<CampusItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { getToken } = useAuth();
-  const { user } = useUser();
-
-  const isReviewer = Boolean(
-    user?.publicMetadata?.role === 'reviewer' ||
-    user?.publicMetadata?.role === 'admin'
-  );
 
   const loadItems = useCallback(async () => {
     setIsLoading(true);
@@ -55,9 +49,8 @@ export function useCampusFeed() {
 
       const targetItem = items.find((i) => i.id === id);
       const sourceType = targetItem?.sourceType || 'personal';
-      const role = (user?.publicMetadata?.role as string) || (isReviewer ? 'reviewer' : undefined);
 
-      await campusApi.delete(token, id, sourceType, role);
+      await campusApi.delete(token, id, sourceType);
       setItems((prev) => prev.filter((item) => item.id !== id));
     } catch (err: unknown) {
       console.error('Failed to delete item:', err);

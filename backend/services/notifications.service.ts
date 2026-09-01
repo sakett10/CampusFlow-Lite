@@ -74,7 +74,7 @@ export const notificationsService = {
       })
       .map((row) => {
         const readBy = Array.isArray(row.read_by) ? row.read_by : [];
-        const isRead = row.is_read || readBy.includes(userId);
+        const isRead = row.user_id ? Boolean(row.is_read) : readBy.includes(userId);
         return {
           id: row.id,
           userId: row.user_id,
@@ -147,28 +147,40 @@ export const notificationsService = {
       return;
     }
 
-    const { rows } = await pool.query('SELECT read_by FROM notifications WHERE id = $1', [notificationId]);
+    const { rows } = await pool.query('SELECT user_id, read_by FROM notifications WHERE id = $1', [notificationId]);
     if (rows.length > 0) {
-      const readBy = Array.isArray(rows[0].read_by) ? rows[0].read_by : [];
-      if (!readBy.includes(userId)) {
-        readBy.push(userId);
-        await pool.query(
-          'UPDATE notifications SET read_by = $1, is_read = TRUE WHERE id = $2',
-          [JSON.stringify(readBy), notificationId],
-        );
+      const notif = rows[0];
+      if (notif.user_id === userId) {
+        await pool.query('UPDATE notifications SET is_read = TRUE WHERE id = $1', [notificationId]);
+      } else if (notif.user_id == null) {
+        const readBy = Array.isArray(notif.read_by) ? notif.read_by : [];
+        if (!readBy.includes(userId)) {
+          readBy.push(userId);
+          await pool.query(
+            'UPDATE notifications SET read_by = $1 WHERE id = $2',
+            [JSON.stringify(readBy), notificationId],
+          );
+        }
       }
     }
   },
 
   markAllAsRead: async (userId: string): Promise<void> => {
-    await pool.query(
-      `
-      UPDATE notifications 
-      SET is_read = TRUE 
-      WHERE user_id = $1 OR user_id IS NULL
-      `,
-      [userId],
-    );
+    // 1. Mark personal notifications as read
+    await pool.query('UPDATE notifications SET is_read = TRUE WHERE user_id = $1', [userId]);
+
+    // 2. Mark broadcast notifications as read for this specific user via read_by
+    const { rows } = await pool.query('SELECT id, read_by FROM notifications WHERE user_id IS NULL');
+    for (const row of rows) {
+      const readBy = Array.isArray(row.read_by) ? row.read_by : [];
+      if (!readBy.includes(userId)) {
+        readBy.push(userId);
+        await pool.query(
+          'UPDATE notifications SET read_by = $1 WHERE id = $2',
+          [JSON.stringify(readBy), row.id],
+        );
+      }
+    }
   },
 
   notifyPendingReview: async (pendingCount: number): Promise<void> => {

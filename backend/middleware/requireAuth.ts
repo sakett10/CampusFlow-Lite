@@ -31,12 +31,6 @@ export function isReviewer(req: Request): boolean {
     return true;
   }
 
-  // 3. Check dev/test role header
-  const devRole = req.headers['x-user-role'];
-  if (devRole === 'reviewer' || devRole === 'admin') {
-    return true;
-  }
-
   return false;
 }
 
