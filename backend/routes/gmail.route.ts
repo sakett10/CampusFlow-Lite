@@ -16,6 +16,7 @@ import { noticeAnalyzerService } from '../services/noticeAnalyzer.service.js';
 import { NoticeValidationError } from '../services/noticeValidator.js';
 import { pool } from '../db.js';
 import { randomUUID } from 'node:crypto';
+import { isReviewer } from '../middleware/requireAuth.js';
 
 const router = Router();
 
@@ -439,7 +440,8 @@ router.post('/sync', requireAuth(), async (req, res) => {
   }
 
   try {
-    const stats = await syncGmailMessagesForUser(userId, 30);
+    const reviewer = isReviewer(req);
+    const stats = await syncGmailMessagesForUser(userId, 30, reviewer);
     return res.json(stats);
 
   } catch (error) {

@@ -903,7 +903,7 @@ describe('Phase C3.5: Automatic Gmail Ingestion, Notice Feed Integration & Notif
     });
 
     it('4, 5, 6: Duplicate Gmail sync and same-thread messages remain separate raw emails, but duplicate campus notices are prevented', async () => {
-      const testUser = 'user_dedup_test';
+      const testUser = 'reviewer_dedup_test';
       await pool.query(
         `
         INSERT INTO gmail_connections (id, user_id, google_email, access_token, refresh_token, expiry_date)

@@ -16,12 +16,7 @@ import {
 import { NoticeValidationError } from './noticeValidator.js';
 import { notificationsService } from './notifications.service.js';
 import { campusEmailsService } from './campusEmails.service.js';
-
-
-
-
-
-
+import { isReviewerUserId } from '../middleware/requireAuth.js';
 
 const clientId = process.env.GOOGLE_CLIENT_ID;
 const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -312,6 +307,7 @@ export const toStructuredGmailMessage = (
 export const syncGmailMessagesForUser = async (
   userId: string,
   batchSize = 30,
+  isReviewer?: boolean,
 ): Promise<GmailSyncStats> => {
   const { rows } = await pool.query(
     `
@@ -327,6 +323,7 @@ export const syncGmailMessagesForUser = async (
   }
 
   const conn = rows[0];
+  const isAuthorizedReviewer = typeof isReviewer === 'boolean' ? isReviewer : isReviewerUserId(userId);
 
   const gmail = createAuthenticatedGmailClient({
     accessToken: conn.access_token,
@@ -413,8 +410,8 @@ export const syncGmailMessagesForUser = async (
         const candidate = await noticeAnalyzerService.analyze(structuredMessage);
         await campusEmailsService.updateAnalysisSuccess(conn.google_email, rawMsg.id, candidate);
 
-        // 3. Only create campus notices for legitimate, non-personal, campus-wide communications
-        if (!isPersonalOrNonNotice(candidate)) {
+        // 3. Only create institutional campus notices if the syncing user is an authorized reviewer/admin
+        if (isAuthorizedReviewer && !isPersonalOrNonNotice(candidate)) {
           const dates = candidate.importantDates || [];
           const eventDate = dates.length > 0 ? dates[0].date : null;
           const fingerprint = generateNoticeFingerprint(
@@ -448,8 +445,6 @@ export const syncGmailMessagesForUser = async (
           }
         }
       } catch (analysisErr) {
-
-
         if (analysisErr instanceof NoticeValidationError) {
           // Valid non-notice email: keep email in campus_emails and record non-notice analysis status
           await campusEmailsService.updateAnalysisFailure(
@@ -458,7 +453,6 @@ export const syncGmailMessagesForUser = async (
             'Non-notice email',
           );
         } else {
-
           console.error(
             `AI analysis failed for message ${rawMsg.id}, but email remains stored:`,
             analysisErr instanceof Error ? analysisErr.message : String(analysisErr),
@@ -476,8 +470,6 @@ export const syncGmailMessagesForUser = async (
 
       await markGmailMessageAsProcessed(userId, rawMsg.id);
       processed++;
-
-
     } catch (msgErr) {
       console.error(
         `Gmail fetch/persistence failed for message ${rawMsg.id}:`,
@@ -514,8 +506,3 @@ export const syncGmailMessagesForUser = async (
     noticesCreated,
   };
 };
-
-
-
-
-
