@@ -1,4 +1,4 @@
-import { Bell, BookOpen, CheckSquare, LayoutDashboard, Radio, Settings, type LucideIcon } from 'lucide-react';
+import { Bell, BookOpen, CheckSquare, LayoutDashboard, Settings, type LucideIcon } from 'lucide-react';
 
 export type AppNavItem = {
   path: string;
@@ -7,17 +7,34 @@ export type AppNavItem = {
   shortLabel: string;
 };
 
-/** Desktop order per design spec; shared with bottom tabs. */
-export const APP_NAV_ITEMS: AppNavItem[] = [
+/** Core 4-tab primary student navigation items */
+export const PRIMARY_NAV_ITEMS: AppNavItem[] = [
   { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', shortLabel: 'Dashboard' },
-  { path: '/notice-board', icon: Bell, label: 'Notice Board', shortLabel: 'Notices' },
-  { path: '/campus-feed', icon: Radio, label: 'Campus Feed', shortLabel: 'Feed' },
-  { path: '/assignments', icon: CheckSquare, label: 'Assignments', shortLabel: 'Assignments' },
   { path: '/courses', icon: BookOpen, label: 'Courses', shortLabel: 'Courses' },
+  { path: '/assignments', icon: CheckSquare, label: 'Assignments', shortLabel: 'Tasks' },
+  { path: '/notices', icon: Bell, label: 'Notices', shortLabel: 'Notices' },
+];
+
+/** Secondary / account level navigation items */
+export const SECONDARY_NAV_ITEMS: AppNavItem[] = [
   { path: '/settings', icon: Settings, label: 'Settings', shortLabel: 'Settings' },
 ];
 
+/** Combined navigation items for sidebar */
+export const APP_NAV_ITEMS: AppNavItem[] = [
+  ...PRIMARY_NAV_ITEMS,
+  ...SECONDARY_NAV_ITEMS,
+];
 
 export function isNavActive(pathname: string, path: string): boolean {
-  return pathname === path;
+  if (path === '/notices') {
+    return (
+      pathname === '/notices' ||
+      pathname === '/notice-board' ||
+      pathname === '/campus-feed' ||
+      pathname.startsWith('/notices/') ||
+      pathname.startsWith('/campus-feed/')
+    );
+  }
+  return pathname === path || pathname.startsWith(`${path}/`);
 }

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import type { GmailSyncStats } from '../lib/types';
 
-export function useGmailAutoSync(intervalMs = 300000) { // 5 minutes default
+export function useGmailAutoSync(intervalMs = 300000, enabled = true) { // 5 minutes default
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
@@ -60,6 +60,8 @@ export function useGmailAutoSync(intervalMs = 300000) { // 5 minutes default
   }, [getToken]);
 
   useEffect(() => {
+    if (!enabled) return;
+
     let isMounted = true;
 
     const checkStatusAndInitialSync = async () => {
@@ -98,7 +100,7 @@ export function useGmailAutoSync(intervalMs = 300000) { // 5 minutes default
       isMounted = false;
       clearInterval(interval);
     };
-  }, [getToken, isConnected, intervalMs, triggerSync]);
+  }, [getToken, isConnected, intervalMs, triggerSync, enabled]);
 
   return {
     isConnected,

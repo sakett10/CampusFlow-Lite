@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom';
 import { AlertCircle, CalendarClock, Clock, ChevronRight } from 'lucide-react';
-import { motion } from 'motion/react';
 import { Badge } from '../ui/Badge';
 import type { PriorityItem } from '../../lib/dashboardUtils';
 import { formatDueDate } from '../../lib/dateUtils';
@@ -12,20 +11,17 @@ export default function PrioritySection({ items }: { items: PriorityItem[] }) {
 
   return (
     <section className="space-y-4">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <h2 className="text-[length:var(--cf-text-title-size)] font-[number:var(--cf-text-title-weight)] tracking-tight text-[var(--cf-text)] font-sans-display">
           Needs Attention
         </h2>
-        <Badge variant="danger" className="animate-pulse">ACTION REQUIRED</Badge>
+        <Badge variant="danger" className="whitespace-nowrap shrink-0">ACTION REQUIRED</Badge>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {items.map((item, index) => (
-          <motion.div
+        {items.map((item) => (
+          <div
             key={item.id}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.2, delay: index * 0.05 }}
           >
             <Link
               to={item.navPath}
@@ -51,7 +47,7 @@ export default function PrioritySection({ items }: { items: PriorityItem[] }) {
                 <ChevronRight className="h-4 w-4 text-[var(--cf-text-tertiary)] group-hover:text-[var(--cf-brand)] group-hover:translate-x-0.5 transition-all" />
               </div>
             </Link>
-          </motion.div>
+          </div>
         ))}
       </div>
     </section>

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { assignmentsService } from '../services/assignments.service.js';
+import { assignmentsService, CourseNotFoundError } from '../services/assignments.service.js';
 import { getAuth } from '@clerk/express';
 
 const router = Router();
@@ -26,6 +26,9 @@ router.post('/', async (req, res) => {
     const newItem = await assignmentsService.add(userId, itemData);
     res.status(201).json(newItem);
   } catch (error) {
+    if (error instanceof CourseNotFoundError) {
+      return res.status(404).json({ error: error.message });
+    }
     console.error('Failed to create assignment:', error);
     res.status(500).json({ error: 'Failed to create assignment' });
   }

@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { isOverdue } from './dateUtils';
+import {
+  isOverdue,
+  parseCalendarDate,
+  formatCalendarDay,
+  formatCalendarMonth,
+} from './dateUtils';
 
 function getLocalDateString(d: Date): string {
   const year = d.getFullYear();
@@ -34,5 +39,20 @@ describe('dateUtils', () => {
     yesterday.setDate(yesterday.getDate() - 1);
     const dateStr = getLocalDateString(yesterday);
     expect(isOverdue(dateStr, 'COMPLETED')).toBe(false);
+  });
+
+  it('safely parses calendar dates without timezone rollback', () => {
+    const dateStr = '2026-10-15';
+    const parsed = parseCalendarDate(dateStr);
+    expect(parsed).toEqual({ year: 2026, month: 10, day: 15 });
+    expect(formatCalendarDay(dateStr)).toBe('15');
+    expect(formatCalendarMonth(dateStr)).toBe('Oct');
+  });
+
+  it('handles invalid or empty calendar date strings gracefully', () => {
+    expect(parseCalendarDate('')).toBeNull();
+    expect(parseCalendarDate('invalid-date')).toBeNull();
+    expect(formatCalendarDay('')).toBe('');
+    expect(formatCalendarMonth('')).toBe('');
   });
 });

@@ -122,6 +122,7 @@ import { storageService } from './services/storage.service.js';
 
 describe('Phase C3.5: Automatic Gmail Ingestion, Notice Feed Integration & Notifications', () => {
   beforeEach(async () => {
+    process.env.REVIEWER_USER_IDS = 'reviewer_user,reviewer_dedup_test,duplicate_reviewer_1,reviewer_1,reviewer_2';
     mockList.mockReset();
     mockGet.mockReset();
     mockNoticeAnalyzer = null;

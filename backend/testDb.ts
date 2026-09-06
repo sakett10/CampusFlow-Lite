@@ -105,6 +105,13 @@ export function createTestPool(): pg.Pool {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE notification_dismissals (
+      user_id TEXT NOT NULL,
+      notification_id TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, notification_id)
+    );
+
     CREATE TABLE campus_emails (
       id UUID PRIMARY KEY,
       user_id TEXT NOT NULL,

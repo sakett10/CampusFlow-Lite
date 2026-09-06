@@ -17,6 +17,7 @@ import { NoticeValidationError } from './noticeValidator.js';
 import { notificationsService } from './notifications.service.js';
 import { campusEmailsService } from './campusEmails.service.js';
 import { isReviewerUserId } from '../middleware/requireAuth.js';
+import { encryptToken, decryptToken } from './crypto.service.js';
 
 const clientId = process.env.GOOGLE_CLIENT_ID;
 const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -88,16 +89,19 @@ export interface StoredOAuthTokens {
 }
 
 export const createAuthenticatedGmailClient = (tokens: StoredOAuthTokens) => {
-  const accessToken = tokens.accessToken || tokens.access_token;
-  const refreshToken = tokens.refreshToken || tokens.refresh_token;
+  const rawAccess = tokens.accessToken || tokens.access_token;
+  const rawRefresh = tokens.refreshToken || tokens.refresh_token;
   const rawExpiry = tokens.expiryDate ?? tokens.expiry_date;
   const expiryDate = rawExpiry != null ? Number(rawExpiry) : undefined;
 
-  if (!accessToken || !refreshToken) {
+  if (!rawAccess || !rawRefresh) {
     throw new Error(
       'Access token and refresh token are required to create an authenticated Gmail client',
     );
   }
+
+  const { text: accessToken } = decryptToken(rawAccess);
+  const { text: refreshToken } = decryptToken(rawRefresh);
 
   const authClient = new google.auth.OAuth2(
     clientId,
@@ -323,11 +327,26 @@ export const syncGmailMessagesForUser = async (
   }
 
   const conn = rows[0];
+  const { text: decryptedAccessToken, wasEncrypted: accessWasEncrypted } = decryptToken(conn.access_token);
+  const { text: decryptedRefreshToken, wasEncrypted: refreshWasEncrypted } = decryptToken(conn.refresh_token);
+
+  // Transparent migration: if either token was legacy plaintext, re-encrypt it now
+  if (!accessWasEncrypted || !refreshWasEncrypted) {
+    try {
+      await pool.query(
+        `UPDATE gmail_connections SET access_token = $1, refresh_token = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3`,
+        [encryptToken(decryptedAccessToken), encryptToken(decryptedRefreshToken), conn.id],
+      );
+    } catch (migErr) {
+      console.error('Failed to re-encrypt legacy plaintext tokens:', migErr);
+    }
+  }
+
   const isAuthorizedReviewer = typeof isReviewer === 'boolean' ? isReviewer : isReviewerUserId(userId);
 
   const gmail = createAuthenticatedGmailClient({
-    accessToken: conn.access_token,
-    refreshToken: conn.refresh_token,
+    accessToken: decryptedAccessToken,
+    refreshToken: decryptedRefreshToken,
     expiryDate: conn.expiry_date,
   });
 

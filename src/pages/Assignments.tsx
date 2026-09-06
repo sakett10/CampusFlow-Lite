@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Plus, CheckSquare } from 'lucide-react';
-import { motion } from 'motion/react';
 import { useAssignments } from '../hooks/useAssignments';
 import { useCourses } from '../hooks/useCourses';
 import AssignmentCard from '../components/AssignmentCard';
@@ -12,7 +11,7 @@ import { Card } from '../components/ui/Card';
 import type { Assignment } from '../lib/types';
 
 export default function Assignments() {
-  const { assignments, addAssignment, updateAssignment, deleteAssignment, updateStatus } = useAssignments();
+  const { assignments, isLoading, error, refresh, addAssignment, updateAssignment, deleteAssignment, updateStatus } = useAssignments();
   const { courses } = useCourses();
   
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -66,12 +65,7 @@ export default function Assignments() {
   filteredAssignments.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
 
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2, ease: 'easeOut' }}
-      className="max-w-6xl mx-auto space-y-6 pb-12"
-    >
+    <div className="max-w-6xl mx-auto space-y-6 pb-12">
       <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 border-b border-[var(--cf-border-subtle)] pb-4">
         <div>
           <h1 className="font-sans-display text-[length:var(--cf-text-display-size)] leading-tight font-bold text-[var(--cf-text)]">
@@ -111,7 +105,35 @@ export default function Assignments() {
         </div>
       </div>
 
-      {assignments.length === 0 ? (
+      {error && (
+        <div className="rounded-[var(--cf-radius-md)] border border-[var(--cf-danger-border)] bg-[var(--cf-danger-subtle)] p-4 flex items-center justify-between">
+          <p className="text-sm font-medium text-[var(--cf-danger)]">
+            {error}
+          </p>
+          <Button variant="secondary" size="sm" onClick={refresh}>
+            Retry
+          </Button>
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5" aria-label="Loading assignments">
+          {[1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="h-44 rounded-[var(--cf-radius-lg)] border border-[var(--cf-border)] bg-[var(--cf-surface)] p-6 space-y-3 animate-pulse"
+            >
+              <div className="h-4 w-20 bg-[var(--cf-surface-muted)] rounded" />
+              <div className="h-6 w-44 bg-[var(--cf-surface-muted)] rounded" />
+              <div className="h-4 w-32 bg-[var(--cf-surface-muted)] rounded" />
+              <div className="pt-3 border-t border-[var(--cf-border-subtle)] flex justify-between">
+                <div className="h-4 w-24 bg-[var(--cf-surface-muted)] rounded" />
+                <div className="h-4 w-16 bg-[var(--cf-surface-muted)] rounded" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : assignments.length === 0 ? (
         <Card padding="lg" className="border-dashed border-[var(--cf-border)] bg-[var(--cf-surface-muted)]/40 p-12 text-center flex flex-col items-center">
           <EmptyState
             icon={<CheckSquare className="w-8 h-8 text-[var(--cf-brand)]" />}
@@ -162,6 +184,6 @@ export default function Assignments() {
         onConfirm={confirmDelete}
         title={getTitleForDelete()}
       />
-    </motion.div>
+    </div>
   );
 }

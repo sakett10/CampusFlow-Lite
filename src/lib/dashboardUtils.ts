@@ -132,7 +132,7 @@ export function getPriorityItems(
           subtitle: `Registration closes in ${days} day${days === 1 ? '' : 's'}`,
           dateStr: item.registrationDeadline,
           daysDiff: days,
-          navPath: `/campus-feed/${item.id}`,
+          navPath: `/notices/${item.id}`,
         });
       } else if (days <= 7 && days >= 0) {
         items.push({
@@ -143,7 +143,7 @@ export function getPriorityItems(
           subtitle: `Registration closes in ${days} day${days === 1 ? '' : 's'}`,
           dateStr: item.registrationDeadline,
           daysDiff: days,
-          navPath: `/campus-feed/${item.id}`,
+          navPath: `/notices/${item.id}`,
         });
       }
     }
@@ -161,7 +161,7 @@ export function getPriorityItems(
             subtitle: `Starts in ${days} day${days === 1 ? '' : 's'}`,
             dateStr: item.date,
             daysDiff: days,
-            navPath: `/campus-feed/${item.id}`,
+            navPath: `/notices/${item.id}`,
           });
         }
       }
@@ -221,7 +221,7 @@ export function getUpcomingTimeline(
         subtitle: 'Deadline',
         dateStr: f.registrationDeadline,
         type: 'REGISTRATION',
-        navPath: `/campus-feed/${f.id}`
+        navPath: `/notices/${f.id}`
       });
     }
     if (f.date && daysUntil(f.date) >= 0 && (!f.registrationDeadline || f.date !== f.registrationDeadline)) {
@@ -231,7 +231,7 @@ export function getUpcomingTimeline(
         subtitle: f.type || 'Event',
         dateStr: f.date,
         type: 'EVENT',
-        navPath: `/campus-feed/${f.id}`
+        navPath: `/notices/${f.id}`
       });
     }
   });

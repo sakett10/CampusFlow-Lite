@@ -4,6 +4,7 @@ import { Card } from '../ui/Card';
 import { Badge } from '../ui/Badge';
 import { EmptyState } from '../ui/EmptyState';
 import type { TimelineItem } from '../../lib/dashboardUtils';
+import { formatCalendarMonth, formatCalendarDay } from '../../lib/dateUtils';
 
 export default function UpcomingTimeline({ items }: { items: TimelineItem[] }) {
   return (
@@ -12,8 +13,8 @@ export default function UpcomingTimeline({ items }: { items: TimelineItem[] }) {
         <h2 className="font-sans-display text-[length:var(--cf-text-subtitle-size)] font-[number:var(--cf-text-subtitle-weight)] text-[var(--cf-text)]">
           Upcoming Schedule
         </h2>
-        <Link to="/campus-feed" className="flex items-center gap-1 text-[length:var(--cf-text-caption-size)] font-[number:var(--cf-text-caption-weight)] text-[var(--cf-text-secondary)] transition-colors hover:text-[var(--cf-brand)]">
-          Full schedule <ChevronRight className="h-4 w-4" />
+        <Link to="/notices" className="flex items-center gap-1 text-[length:var(--cf-text-caption-size)] font-[number:var(--cf-text-caption-weight)] text-[var(--cf-text-secondary)] transition-colors hover:text-[var(--cf-brand)]">
+          All notices <ChevronRight className="h-4 w-4" />
         </Link>
       </div>
 
@@ -34,8 +35,8 @@ export default function UpcomingTimeline({ items }: { items: TimelineItem[] }) {
               className="group flex items-start gap-3.5 rounded-[var(--cf-radius-md)] border border-[var(--cf-border)] p-3.5 transition-all hover:bg-[var(--cf-surface-muted)] hover:border-[var(--cf-border-strong)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cf-brand)]"
             >
               <div className="flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-[var(--cf-radius-sm)] bg-[var(--cf-surface-muted)] text-[var(--cf-text-secondary)] group-hover:bg-[var(--cf-surface)] group-hover:text-[var(--cf-brand)] border border-[var(--cf-border-subtle)] transition-all font-mono-meta">
-                <span className="text-[10px] font-bold uppercase tracking-wider">{new Date(item.dateStr).toLocaleDateString('en-US', { month: 'short' })}</span>
-                <span className="text-sm font-bold leading-none">{new Date(item.dateStr).getDate()}</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider">{formatCalendarMonth(item.dateStr)}</span>
+                <span className="text-sm font-bold leading-none">{formatCalendarDay(item.dateStr)}</span>
               </div>
               
               <div className="min-w-0 flex-1">

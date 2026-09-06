@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useCampusFeed } from '../hooks/useCampusFeed';
 import { Sparkles, Radio, Search, X, AlertCircle, RefreshCw } from 'lucide-react';
-import { motion } from 'motion/react';
 import type { ItemType } from '../lib/types';
 import { sortCampusItems, type SortOption } from '../lib/eventSorting';
 import { searchCampusItems } from '../lib/eventSearch';
@@ -76,12 +75,7 @@ export default function CampusFeed() {
   const openAnalyze = () => setIsModalOpen(true);
 
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2, ease: 'easeOut' }}
-      className="mx-auto w-full max-w-6xl space-y-6 overflow-x-hidden pb-12"
-    >
+    <div className="mx-auto w-full max-w-6xl space-y-6 overflow-x-hidden pb-12">
       {/* Header */}
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between pt-2">
         <div>
@@ -299,6 +293,6 @@ export default function CampusFeed() {
         onClose={() => setIsModalOpen(false)}
         onSave={(item) => addItem(item)}
       />
-    </motion.div>
+    </div>
   );
 }

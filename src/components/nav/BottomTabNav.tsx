@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { APP_NAV_ITEMS, isNavActive } from './navConfig';
+import { PRIMARY_NAV_ITEMS, isNavActive } from './navConfig';
 
 export default function BottomTabNav() {
   const { pathname } = useLocation();
@@ -10,7 +10,7 @@ export default function BottomTabNav() {
       aria-label="Primary"
     >
       <ul className="mx-auto flex h-16 max-w-lg items-stretch px-2">
-        {APP_NAV_ITEMS.map((item) => {
+        {PRIMARY_NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const active = isNavActive(pathname, item.path);
           return (
@@ -29,17 +29,17 @@ export default function BottomTabNav() {
               >
                 {active && (
                   <span
-                    className="absolute inset-x-2 top-1 h-0.5 rounded-full bg-[var(--cf-brand)] shadow-[0_0_8px_var(--cf-brand)]"
+                    className="absolute inset-x-3 top-1 h-0.5 rounded-full bg-[var(--cf-brand)]"
                     aria-hidden="true"
                   />
                 )}
                 <Icon
-                  className={`h-5 w-5 shrink-0 transition-transform duration-150 ${active ? 'scale-110 text-[var(--cf-brand)]' : ''}`}
+                  className={`h-5 w-5 shrink-0 transition-colors ${active ? 'text-[var(--cf-brand)]' : 'text-[var(--cf-text-tertiary)]'}`}
                   aria-hidden="true"
                 />
                 <span
                   className={`max-w-full truncate text-[length:var(--cf-text-micro-size)] leading-[var(--cf-text-micro-line)] ${
-                    active ? 'font-bold' : 'font-medium'
+                    active ? 'font-semibold' : 'font-medium'
                   }`}
                 >
                   {item.shortLabel}

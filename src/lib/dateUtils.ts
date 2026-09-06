@@ -85,3 +85,28 @@ export function formatTime(timeStr: string): string {
 
   return `${hour12}:${minutesStr} ${ampm}`;
 }
+
+export function parseCalendarDate(
+  dateStr: string,
+): { year: number; month: number; day: number } | null {
+  if (!isValidDateString(dateStr)) return null;
+  const [yearStr, monthStr, dayStr] = dateStr.split('-');
+  return {
+    year: Number(yearStr),
+    month: Number(monthStr),
+    day: Number(dayStr),
+  };
+}
+
+export function formatCalendarMonth(dateStr: string): string {
+  const parsed = parseCalendarDate(dateStr);
+  if (!parsed) return '';
+  const date = new Date(parsed.year, parsed.month - 1, parsed.day);
+  return date.toLocaleDateString('en-US', { month: 'short' });
+}
+
+export function formatCalendarDay(dateStr: string): string {
+  const parsed = parseCalendarDate(dateStr);
+  if (!parsed) return '';
+  return String(parsed.day);
+}

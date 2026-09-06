@@ -17,6 +17,7 @@ import { NoticeValidationError } from '../services/noticeValidator.js';
 import { pool } from '../db.js';
 import { randomUUID } from 'node:crypto';
 import { isReviewer } from '../middleware/requireAuth.js';
+import { encryptToken, decryptToken } from '../services/crypto.service.js';
 
 const router = Router();
 
@@ -82,7 +83,8 @@ router.post('/disconnect', requireAuth(), async (req, res) => {
     );
 
     if (rows.length > 0) {
-      const tokenToRevoke = rows[0].access_token || rows[0].refresh_token;
+      const rawToken = rows[0].access_token || rows[0].refresh_token;
+      const { text: tokenToRevoke } = decryptToken(rawToken);
       if (tokenToRevoke) {
         try {
           await gmailOAuth2Client.revokeToken(tokenToRevoke);
@@ -199,8 +201,8 @@ router.get('/callback', async (req, res) => {
         randomUUID(),
         userId,
         googleEmail,
-        tokens.access_token,
-        tokens.refresh_token,
+        encryptToken(tokens.access_token),
+        encryptToken(tokens.refresh_token),
         tokens.expiry_date ?? null,
       ],
     );

@@ -1,6 +1,5 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useCampusFeed } from '../hooks/useCampusFeed';
-import { motion } from 'motion/react';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Badge, type BadgeVariant } from '../components/ui/Badge';
@@ -37,12 +36,12 @@ export default function CampusItemDetail() {
   if (!item) {
     return (
       <div className="mx-auto w-full max-w-3xl space-y-6">
-        <Button variant="ghost" onClick={() => navigate('/campus-feed')} leftIcon={<ArrowLeft className="h-4 w-4" />}>
-          Back to Feed
+        <Button variant="ghost" onClick={() => navigate('/notices')} leftIcon={<ArrowLeft className="h-4 w-4" />}>
+          Back to Notices
         </Button>
         <Card padding="lg" className="text-center">
-          <h2 className="font-sans-display text-[length:var(--cf-text-title-size)] font-semibold text-[var(--cf-text)]">Event not found</h2>
-          <p className="mt-2 font-reading text-[var(--cf-text-secondary)]">The event you are looking for does not exist or has been deleted.</p>
+          <h2 className="font-sans-display text-[length:var(--cf-text-title-size)] font-semibold text-[var(--cf-text)]">Notice not found</h2>
+          <p className="mt-2 font-reading text-[var(--cf-text-secondary)]">The notice you are looking for does not exist or has been deleted.</p>
         </Card>
       </div>
     );
@@ -62,19 +61,14 @@ export default function CampusItemDetail() {
   const actions = item.importantActions ?? [];
 
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2, ease: 'easeOut' }}
-      className="mx-auto w-full max-w-4xl space-y-6 pb-12"
-    >
+    <div className="mx-auto w-full max-w-4xl space-y-6 pb-12">
       <nav aria-label="Back navigation">
         <Link 
-          to="/campus-feed"
+          to="/notices"
           className="inline-flex items-center gap-2 text-[length:var(--cf-text-body-size)] font-medium text-[var(--cf-text-secondary)] transition-colors hover:text-[var(--cf-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cf-brand)] rounded-md px-2 py-1 -ml-2"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-          Back to Feed
+          Back to Notices
         </Link>
       </nav>
 
@@ -203,6 +197,6 @@ export default function CampusItemDetail() {
           </aside>
         </div>
       </Card>
-    </motion.div>
+    </div>
   );
 }

@@ -35,7 +35,6 @@
   --cf-brand: #4F6BFF;
   --cf-brand-hover: #4058E8;
   --cf-brand-subtle: rgba(79, 107, 255, 0.10);
-  --cf-brand-glow: rgba(79, 107, 255, 0.18);
   --cf-brand-fg: #FFFFFF;
 
   /* Semantic Colors */
@@ -63,7 +62,6 @@
   --cf-ai: #0F9F8A;
   --cf-ai-hover: #0D8B78;
   --cf-ai-subtle: rgba(15, 159, 138, 0.10);
-  --cf-ai-glow: rgba(15, 159, 138, 0.18);
   --cf-ai-border: rgba(15, 159, 138, 0.25);
   --cf-ai-fg: #FFFFFF;
 
@@ -150,8 +148,8 @@
   --cf-elev-1: 0 1px 2px rgba(0, 0, 0, 0.25), 0 0 0 1px var(--cf-border-subtle);
   --cf-elev-2: 0 4px 14px -2px rgba(0, 0, 0, 0.35), 0 0 0 1px var(--cf-border);
   --cf-elev-3: 0 12px 30px -4px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--cf-border);
-  --cf-elev-brand: 0 0 16px var(--cf-brand-glow);
-  --cf-elev-ai: 0 0 16px var(--cf-ai-glow);
+  --cf-elev-brand: 0 2px 8px -1px rgba(79, 107, 255, 0.25);
+  --cf-elev-ai: 0 2px 8px -1px rgba(15, 159, 138, 0.25);
 
   /* Motion Timing */
   --cf-transition-fast: 140ms cubic-bezier(0.2, 0, 0, 1);

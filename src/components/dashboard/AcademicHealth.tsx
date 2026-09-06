@@ -20,11 +20,13 @@ export default function AcademicHealth({
     totalClasses += c.totalClasses;
   });
   
-  const overallAttendance = totalClasses > 0 ? Math.round((totalAttended / totalClasses) * 100) : 100;
+  const hasAttendanceData = totalClasses > 0;
+  const overallAttendance = hasAttendanceData ? Math.round((totalAttended / totalClasses) * 100) : 0;
   
-  const assignmentProgress = assignmentStats.total > 0 
+  const hasAssignmentData = assignmentStats.total > 0;
+  const assignmentProgress = hasAssignmentData
     ? Math.round((assignmentStats.completed / assignmentStats.total) * 100)
-    : 100;
+    : 0;
 
   return (
     <Card padding="lg" className="flex flex-col h-full group transition-all duration-[var(--cf-transition-normal)] hover:shadow-[var(--cf-elev-2)] hover:border-[var(--cf-border-strong)]">
@@ -46,34 +48,50 @@ export default function AcademicHealth({
               Overall Attendance
             </span>
             <span className="font-mono-meta text-[length:var(--cf-text-title-size)] font-[number:var(--cf-text-title-weight)] tracking-tight text-[var(--cf-text)]">
-              {overallAttendance}%
+              {hasAttendanceData ? `${overallAttendance}%` : '—'}
             </span>
           </div>
           <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--cf-surface-muted)] border border-[var(--cf-border-subtle)]">
             <div 
-              className={`h-full rounded-full transition-all duration-700 ${overallAttendance < 75 ? 'bg-[var(--cf-danger)]' : 'bg-[var(--cf-success)]'}`}
-              style={{ width: `${overallAttendance}%` }}
+              className={`h-full rounded-full transition-all duration-500 ${
+                !hasAttendanceData
+                  ? 'bg-transparent'
+                  : overallAttendance < 75
+                  ? 'bg-[var(--cf-danger)]'
+                  : 'bg-[var(--cf-success)]'
+              }`}
+              style={{ width: `${hasAttendanceData ? overallAttendance : 0}%` }}
             />
           </div>
+          {!hasAttendanceData && (
+            <p className="mt-1.5 text-[length:var(--cf-text-caption-size)] text-[var(--cf-text-tertiary)]">
+              No class attendance logged yet.
+            </p>
+          )}
         </div>
 
         {/* Assignment Progress */}
         <div>
           <div className="mb-2 flex items-end justify-between">
             <span className="flex items-center gap-2 text-[length:var(--cf-text-body-size)] font-[number:var(--cf-text-body-strong-weight)] text-[var(--cf-text-secondary)]">
-              <CheckCircle className="h-4 w-4 text-[var(--cf-ai)]" />
+              <CheckCircle className="h-4 w-4 text-[var(--cf-brand)]" />
               Tasks Completed
             </span>
             <span className="font-mono-meta text-[length:var(--cf-text-title-size)] font-[number:var(--cf-text-title-weight)] tracking-tight text-[var(--cf-text)]">
-              {assignmentProgress}%
+              {hasAssignmentData ? `${assignmentProgress}%` : '—'}
             </span>
           </div>
           <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--cf-surface-muted)] border border-[var(--cf-border-subtle)]">
             <div 
-              className="h-full rounded-full bg-[var(--cf-ai)] transition-all duration-700"
-              style={{ width: `${assignmentProgress}%` }}
+              className="h-full rounded-full bg-[var(--cf-brand)] transition-all duration-500"
+              style={{ width: `${hasAssignmentData ? assignmentProgress : 0}%` }}
             />
           </div>
+          {!hasAssignmentData && (
+            <p className="mt-1.5 text-[length:var(--cf-text-caption-size)] text-[var(--cf-text-tertiary)]">
+              No coursework tasks logged yet.
+            </p>
+          )}
         </div>
       </div>
 

@@ -12,6 +12,13 @@ const mapRowToAssignment = (row: Record<string, unknown>): Assignment => ({
   status: row.status as 'PENDING' | 'IN_PROGRESS' | 'COMPLETED',
 });
 
+export class CourseNotFoundError extends Error {
+  constructor(message = 'Course not found or access denied') {
+    super(message);
+    this.name = 'CourseNotFoundError';
+  }
+}
+
 export const assignmentsService = {
   getAll: async (userId: string): Promise<Assignment[]> => {
     const { rows } = await pool.query(
@@ -26,6 +33,16 @@ export const assignmentsService = {
     userId: string,
     item: Omit<Assignment, 'id'>,
   ): Promise<Assignment> => {
+    if (item.courseId) {
+      const courseCheck = await pool.query(
+        'SELECT id FROM courses WHERE id = $1 AND user_id = $2',
+        [item.courseId, userId],
+      );
+      if (courseCheck.rows.length === 0) {
+        throw new CourseNotFoundError();
+      }
+    }
+
     const id = randomUUID();
 
     const query = `

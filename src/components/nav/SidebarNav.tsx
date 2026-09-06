@@ -31,7 +31,7 @@ export default function SidebarNav() {
             <span>{item.label}</span>
             {active && (
               <span
-                className="ml-auto h-1.5 w-1.5 rounded-full bg-[var(--cf-brand)] shadow-[0_0_8px_var(--cf-brand)]"
+                className="ml-auto h-1.5 w-1.5 rounded-full bg-[var(--cf-brand)]"
                 aria-hidden="true"
               />
             )}

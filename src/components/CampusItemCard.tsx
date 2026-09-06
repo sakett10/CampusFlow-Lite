@@ -11,7 +11,8 @@ import { Button } from './ui/Button';
 
 type CampusItemCardProps = {
   item: CampusItem;
-  onDelete: (id: string) => void;
+  onDelete?: (id: string) => void;
+  canDelete?: boolean;
 };
 
 const TYPE_LABELS: Record<ItemType, string> = {
@@ -52,9 +53,10 @@ const DEADLINE_STYLES: Record<DeadlineTone, string> = {
     'bg-[var(--cf-surface-muted)] text-[var(--cf-text-secondary)] border-[var(--cf-border)]',
 };
 
-export default function CampusItemCard({ item, onDelete }: CampusItemCardProps) {
+export default function CampusItemCard({ item, onDelete, canDelete }: CampusItemCardProps) {
   const [confirmOpen, setConfirmOpen] = useState(false);
 
+  const isDeletable = canDelete !== undefined ? canDelete : item.sourceType !== 'notice';
   const displayTitle = item.title?.trim() || 'Untitled item';
   const typeLabel = humanizeType(item.type);
   const deadlineTone = item.registrationDeadline
@@ -157,31 +159,35 @@ export default function CampusItemCard({ item, onDelete }: CampusItemCardProps) 
         {/* Footer actions */}
         <div className="mt-auto flex items-center gap-2.5 border-t border-[var(--cf-border-subtle)] pt-3.5">
           <Link
-            to={`/campus-feed/${item.id}`}
+            to={`/notices/${item.id}`}
             className="flex-1 inline-flex h-10 items-center justify-center rounded-xl bg-[var(--cf-brand)] text-xs font-semibold text-white shadow-sm transition-all hover:bg-[var(--cf-brand-hover)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cf-brand)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--cf-surface)]"
           >
             View Notice
           </Link>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setConfirmOpen(true)}
-            aria-label={`Delete ${displayTitle}`}
-            title={`Delete ${displayTitle}`}
-            className="h-10 w-10 shrink-0 p-0 text-[var(--cf-text-tertiary)] hover:bg-[var(--cf-danger-subtle)] hover:text-[var(--cf-danger)] focus-visible:ring-2 focus-visible:ring-[var(--cf-danger)] rounded-xl"
-          >
-            <Trash2 className="h-4 w-4" aria-hidden="true" />
-          </Button>
+          {isDeletable && onDelete && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setConfirmOpen(true)}
+              aria-label={`Delete ${displayTitle}`}
+              title={`Delete ${displayTitle}`}
+              className="h-10 w-10 shrink-0 p-0 text-[var(--cf-text-tertiary)] hover:bg-[var(--cf-danger-subtle)] hover:text-[var(--cf-danger)] focus-visible:ring-2 focus-visible:ring-[var(--cf-danger)] rounded-xl"
+            >
+              <Trash2 className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          )}
         </div>
       </Card>
 
-      <DeleteConfirmModal
-        isOpen={confirmOpen}
-        onClose={() => setConfirmOpen(false)}
-        onConfirm={() => onDelete(item.id)}
-        title={displayTitle}
-        description={`This will permanently remove “${displayTitle}” from your campus feed. This cannot be undone.`}
-      />
+      {isDeletable && onDelete && (
+        <DeleteConfirmModal
+          isOpen={confirmOpen}
+          onClose={() => setConfirmOpen(false)}
+          onConfirm={() => onDelete(item.id)}
+          title={displayTitle}
+          description={`This will permanently remove “${displayTitle}” from your campus feed. This cannot be undone.`}
+        />
+      )}
     </>
   );
 }

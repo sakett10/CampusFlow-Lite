@@ -2,6 +2,24 @@ import { pool } from '../db.js';
 import { randomUUID } from 'node:crypto';
 import type { AppNotification, NotificationType, Notice } from '../types.js';
 
+let dismissalTableEnsured = false;
+async function ensureDismissalTable() {
+  if (dismissalTableEnsured) return;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS notification_dismissals (
+        user_id TEXT NOT NULL,
+        notification_id TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, notification_id)
+      );
+    `);
+    dismissalTableEnsured = true;
+  } catch {
+    // Continue even if table exists or migration script managed it
+  }
+}
+
 export const notificationsService = {
   create: async (data: {
     userId?: string | null;
@@ -52,6 +70,20 @@ export const notificationsService = {
   },
 
   getAllForUser: async (userId: string, isReviewer = false): Promise<AppNotification[]> => {
+    await ensureDismissalTable();
+
+    // Fetch dismissed notification IDs for this user
+    let dismissedIds = new Set<string>();
+    try {
+      const { rows: dismissalRows } = await pool.query(
+        'SELECT notification_id FROM notification_dismissals WHERE user_id = $1',
+        [userId],
+      );
+      dismissedIds = new Set(dismissalRows.map((r) => r.notification_id as string));
+    } catch {
+      // Continue even if table lookup fails
+    }
+
     // 1. Fetch persisted notifications based on role
     const roleFilter = isReviewer ? `('all', 'reviewer')` : `('all', 'student')`;
     const { rows } = await pool.query(
@@ -74,7 +106,9 @@ export const notificationsService = {
       })
       .map((row) => {
         const readBy = Array.isArray(row.read_by) ? row.read_by : [];
-        const isRead = row.user_id ? Boolean(row.is_read) : readBy.includes(userId);
+        const isRead =
+          dismissedIds.has(row.id) ||
+          (row.user_id ? Boolean(row.is_read) : readBy.includes(userId));
         return {
           id: row.id,
           userId: row.user_id,
@@ -119,8 +153,9 @@ export const notificationsService = {
           }
 
           if (reminderMessage) {
+            const reminderId = `deadline-${notice.id}-${dateStr}`;
             dynamicReminders.push({
-              id: `deadline-${notice.id}-${dateStr}`,
+              id: reminderId,
               userId,
               recipientRole: 'all',
               title: '⏰ Upcoming Deadline',
@@ -128,7 +163,7 @@ export const notificationsService = {
               type: 'deadline_reminder',
               noticeId: notice.id,
               link: `/notice-board`,
-              isRead: false,
+              isRead: dismissedIds.has(reminderId),
               createdAt: new Date().toISOString(),
             });
           }
@@ -142,7 +177,21 @@ export const notificationsService = {
   },
 
   markAsRead: async (userId: string, notificationId: string): Promise<void> => {
-    // If it is a dynamic reminder, ignore database update
+    await ensureDismissalTable();
+
+    // Persist dismissal record for this user
+    try {
+      await pool.query(
+        `INSERT INTO notification_dismissals (user_id, notification_id)
+         VALUES ($1, $2)
+         ON CONFLICT (user_id, notification_id) DO NOTHING`,
+        [userId, notificationId],
+      );
+    } catch {
+      // Continue even if insertion fails
+    }
+
+    // If it is a dynamic reminder, dismissal record above is sufficient
     if (notificationId.startsWith('deadline-')) {
       return;
     }
@@ -166,6 +215,8 @@ export const notificationsService = {
   },
 
   markAllAsRead: async (userId: string): Promise<void> => {
+    await ensureDismissalTable();
+
     // 1. Mark personal notifications as read
     await pool.query('UPDATE notifications SET is_read = TRUE WHERE user_id = $1', [userId]);
 
@@ -180,6 +231,24 @@ export const notificationsService = {
           [JSON.stringify(readBy), row.id],
         );
       }
+    }
+
+    // 3. Mark current dynamic reminders as dismissed for this user
+    try {
+      const currentNotifications = await notificationsService.getAllForUser(userId, true);
+      const dynamicIds = currentNotifications
+        .filter((n) => n.id.startsWith('deadline-'))
+        .map((n) => n.id);
+      for (const dId of dynamicIds) {
+        await pool.query(
+          `INSERT INTO notification_dismissals (user_id, notification_id)
+           VALUES ($1, $2)
+           ON CONFLICT (user_id, notification_id) DO NOTHING`,
+          [userId, dId],
+        );
+      }
+    } catch {
+      // Continue even if dynamic dismissal fails
     }
   },
 

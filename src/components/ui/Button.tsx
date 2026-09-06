@@ -31,7 +31,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
     const variants: Record<ButtonVariant, string> = {
       primary:
-        'bg-[var(--cf-brand)] text-[var(--cf-brand-fg)] hover:bg-[var(--cf-brand-hover)] shadow-[var(--cf-elev-brand)]',
+        'bg-[var(--cf-brand)] text-[var(--cf-brand-fg)] hover:bg-[var(--cf-brand-hover)] shadow-sm active:shadow-none',
       secondary:
         'bg-[var(--cf-surface-muted)] text-[var(--cf-text)] hover:bg-[var(--cf-surface-elevated)] border border-[var(--cf-border)] hover:border-[var(--cf-border-strong)]',
       outline:
@@ -39,7 +39,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       ghost:
         'bg-transparent text-[var(--cf-text-secondary)] hover:bg-[var(--cf-surface-muted)] hover:text-[var(--cf-text)]',
       ai:
-        'bg-[var(--cf-ai)] text-[var(--cf-ai-fg)] hover:bg-[var(--cf-ai-hover)] shadow-[var(--cf-elev-ai)]',
+        'bg-[var(--cf-ai)] text-[var(--cf-ai-fg)] hover:bg-[var(--cf-ai-hover)] shadow-sm',
       danger:
         'bg-[var(--cf-danger)] text-white hover:opacity-90 shadow-sm',
     };

@@ -3,11 +3,16 @@ import SidebarNav from './nav/SidebarNav';
 import TopBar from './nav/TopBar';
 import BottomTabNav from './nav/BottomTabNav';
 import NotificationBell from './NotificationBell';
-import { UserButton } from '@clerk/clerk-react';
+import { UserButton, useUser } from '@clerk/clerk-react';
 import { useGmailAutoSync } from '../hooks/useGmailAutoSync';
 
 export default function Layout() {
-  const { isSyncing, isConnected, lastSyncTime } = useGmailAutoSync();
+  const { user } = useUser();
+  const isReviewer = Boolean(
+    user?.publicMetadata?.role === 'reviewer' ||
+    user?.publicMetadata?.role === 'admin'
+  );
+  const { isSyncing, isConnected, lastSyncTime } = useGmailAutoSync(300000, isReviewer);
 
   return (
     <div className="flex h-dvh max-w-full overflow-x-hidden bg-[var(--cf-bg)] font-[family-name:var(--cf-font-sans)] text-[var(--cf-text)]">
@@ -18,7 +23,7 @@ export default function Layout() {
       >
         <div className="flex items-center justify-between px-6 py-6 border-b border-[var(--cf-border)]">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--cf-brand-subtle)] border border-[var(--cf-brand)]/30 text-[var(--cf-brand)] font-extrabold text-sm shadow-[0_0_12px_var(--cf-brand-subtle)]">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--cf-brand-subtle)] border border-[var(--cf-brand)]/30 text-[var(--cf-brand)] font-extrabold text-sm">
               CF
             </div>
             <div>
@@ -33,7 +38,7 @@ export default function Layout() {
           <NotificationBell />
         </div>
 
-        {isConnected && (
+        {isReviewer && isConnected && (
           <div className="px-6 py-2 border-b border-[var(--cf-border-subtle)] bg-[var(--cf-surface-muted)]/50 flex items-center justify-between text-[10px] font-mono text-[var(--cf-text-secondary)]">
             <span className="flex items-center gap-1.5">
               <span className={`h-1.5 w-1.5 rounded-full ${isSyncing ? 'bg-amber-400 animate-ping' : 'bg-emerald-400'}`} />

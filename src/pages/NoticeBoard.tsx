@@ -6,11 +6,9 @@ import {
   X,
   AlertCircle,
   RefreshCw,
-  Sparkles,
   Inbox,
   ShieldCheck,
 } from 'lucide-react';
-import { motion } from 'motion/react';
 import type { Notice, NoticeCategory, NoticePriority, NoticeStatus } from '../lib/types';
 import { useNotices } from '../hooks/useNotices';
 import NoticeCard from '../components/NoticeCard';
@@ -117,18 +115,13 @@ export const NoticeBoard: React.FC = () => {
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2, ease: 'easeOut' }}
-      className="mx-auto w-full max-w-6xl space-y-6 overflow-x-hidden pb-12"
-    >
+    <div className="mx-auto w-full max-w-6xl space-y-6 overflow-x-hidden pb-12">
       {/* Header */}
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between pt-2">
         <div>
           <div className="flex items-center gap-3">
             <h1 className="font-sans-display text-[length:var(--cf-text-display-size)] leading-tight font-bold tracking-tight text-[var(--cf-text)]">
-              Campus Bulletin
+              Notice Board
             </h1>
             {!isLoading && !error && (
               <Badge variant="brand" className="px-2.5 py-0.5 text-[length:var(--cf-text-micro-size)] font-mono-meta font-semibold">
@@ -162,7 +155,7 @@ export const NoticeBoard: React.FC = () => {
         <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold font-mono text-amber-400 uppercase tracking-wider flex items-center gap-2">
-              <Sparkles className="w-4 h-4" />
+              <Inbox className="w-4 h-4" />
               Reviewer Ingest: Gmail → Pending Notice
             </span>
           </div>
@@ -326,7 +319,7 @@ export const NoticeBoard: React.FC = () => {
             description={
               filters.search || (filters.category && filters.category !== 'all')
                 ? 'Try adjusting your filters or search terms.'
-                : 'The campus bulletin is currently clear. New official circulars and updates will appear here.'
+                : 'The notice board is currently clear. New official circulars and updates will appear here.'
             }
             action={
               (filters.search || (filters.category && filters.category !== 'all')) ? (
@@ -373,7 +366,7 @@ export const NoticeBoard: React.FC = () => {
           await updateNotice(id, updates);
         }}
       />
-    </motion.div>
+    </div>
   );
 };
 

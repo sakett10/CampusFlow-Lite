@@ -169,6 +169,7 @@ export function useCourses() {
     updateCourse,
     deleteCourse,
     recordAttendance,
+    refetch: loadCourses,
     refresh: loadCourses,
   };
 }

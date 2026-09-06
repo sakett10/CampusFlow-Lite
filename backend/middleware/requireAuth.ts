@@ -14,13 +14,6 @@ export function isReviewerUserId(userId: string): boolean {
   if (reviewerIds.includes(userId) || adminIds.includes(userId)) {
     return true;
   }
-  // In test / development contexts, recognize test reviewer identifiers
-  if (
-    process.env.NODE_ENV === 'test' &&
-    (userId.startsWith('reviewer') || userId.startsWith('admin') || userId.includes('_reviewer') || userId.includes('reviewer_'))
-  ) {
-    return true;
-  }
   return false;
 }
 
