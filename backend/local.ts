@@ -1,11 +1,7 @@
 import app from './index.js';
 
-const PORT = 3000;
+const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 
-app.listen(PORT, (err?: unknown) => {
-  if (err) {
-    console.error('Failed to start API:', err);
-    process.exit(1);
-  }
+app.listen(PORT, () => {
   console.log(`CampusFlow API running at http://localhost:${PORT}`);
 });

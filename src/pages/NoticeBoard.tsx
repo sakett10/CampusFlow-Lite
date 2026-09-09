@@ -11,8 +11,12 @@ import {
 } from 'lucide-react';
 import type { Notice, NoticeCategory, NoticePriority, NoticeStatus } from '../lib/types';
 import { useNotices } from '../hooks/useNotices';
+import { useTasks } from '../hooks/useAssignments';
+import { useCourses } from '../hooks/useCourses';
+import { proposeTaskFromNotice, type ProposedTask } from '../lib/deadlineIntelligence';
 import NoticeCard from '../components/NoticeCard';
 import NoticeEditModal from '../components/NoticeEditModal';
+import AddToTaskModal from '../components/AddToTaskModal';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
@@ -67,7 +71,20 @@ export const NoticeBoard: React.FC = () => {
     updateNotice,
     deleteNotice,
     ingestFromGmail,
+    convertToTask,
   } = useNotices();
+
+  const { addTask } = useTasks();
+  const { courses } = useCourses();
+  const [taskProposal, setTaskProposal] = useState<ProposedTask | null>(null);
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [taskSuccessBanner, setTaskSuccessBanner] = useState<string | null>(null);
+
+  const handleAddToTask = (notice: Notice) => {
+    const proposal = proposeTaskFromNotice(notice);
+    setTaskProposal(proposal);
+    setIsTaskModalOpen(true);
+  };
 
   const [editingNotice, setEditingNotice] = useState<Notice | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -149,6 +166,20 @@ export const NoticeBoard: React.FC = () => {
           Refresh
         </Button>
       </header>
+
+      {/* Task Creation Success Notification */}
+      {taskSuccessBanner && (
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-xs font-semibold text-emerald-400 flex items-center justify-between">
+          <span>✓ {taskSuccessBanner}</span>
+          <button
+            type="button"
+            onClick={() => setTaskSuccessBanner(null)}
+            className="text-emerald-400/70 hover:text-emerald-300 font-bold"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Reviewer Quick Ingest Bar (Only for Reviewers) */}
       {isReviewer && (
@@ -349,10 +380,38 @@ export const NoticeBoard: React.FC = () => {
               onArchive={archiveNotice}
               onEdit={handleEditClick}
               onDelete={deleteNotice}
+              onAddToTask={handleAddToTask}
             />
           ))}
         </div>
       )}
+
+      {/* Notice -> Task Conversion Modal */}
+      <AddToTaskModal
+        isOpen={isTaskModalOpen}
+        onClose={() => {
+          setIsTaskModalOpen(false);
+          setTaskProposal(null);
+        }}
+        proposal={taskProposal}
+        onConfirm={async (taskData) => {
+          if (taskProposal?.source === 'notice' && taskProposal.sourceId) {
+            await convertToTask(taskProposal.sourceId, {
+              title: taskData.title,
+              dueDate: taskData.dueDate,
+              dueTime: taskData.dueTime,
+              reminder: taskData.reminder,
+              priority: taskData.priority,
+              courseId: taskData.courseId,
+            });
+          } else {
+            await addTask(taskData);
+          }
+          setTaskSuccessBanner(`Converted "${taskData.title}" into a task!`);
+          setTimeout(() => setTaskSuccessBanner(null), 4000);
+        }}
+        courses={courses}
+      />
 
       {/* Reviewer Edit Modal */}
       <NoticeEditModal

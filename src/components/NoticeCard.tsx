@@ -14,8 +14,10 @@ import {
   Edit2,
   Trash2,
   ShieldAlert,
+  CheckSquare,
 } from 'lucide-react';
 import type { Notice, NoticeCategory, NoticePriority, NoticeStatus } from '../lib/types';
+import { formatNoticeDate, formatEmailTimestamp } from '../lib/dateUtils';
 import { Card } from './ui/Card';
 import { Badge } from './ui/Badge';
 import { Button } from './ui/Button';
@@ -29,21 +31,22 @@ interface NoticeCardProps {
   onArchive?: (id: string) => void;
   onEdit?: (notice: Notice) => void;
   onDelete?: (id: string) => void;
+  onAddToTask?: (notice: Notice) => void;
 }
 
 const CATEGORY_STYLES: Record<NoticeCategory, { label: string; bg: string; text: string; border: string }> = {
-  academic: { label: 'Academic', bg: 'bg-sky-500/10', text: 'text-sky-400', border: 'border-sky-500/30' },
-  exam: { label: 'Examination', bg: 'bg-rose-500/10', text: 'text-rose-400', border: 'border-rose-500/30' },
-  assignment: { label: 'Assignment', bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/30' },
-  administrative: { label: 'Administrative', bg: 'bg-indigo-500/10', text: 'text-indigo-400', border: 'border-indigo-500/30' },
-  event: { label: 'Event', bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/30' },
-  placement: { label: 'Placement', bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/30' },
-  admission: { label: 'Admission', bg: 'bg-cyan-500/10', text: 'text-cyan-400', border: 'border-cyan-500/30' },
-  hostel: { label: 'Hostel', bg: 'bg-orange-500/10', text: 'text-orange-400', border: 'border-orange-500/30' },
-  fee: { label: 'Fee & Payment', bg: 'bg-yellow-500/10', text: 'text-yellow-400', border: 'border-yellow-500/30' },
-  scholarship: { label: 'Scholarship', bg: 'bg-teal-500/10', text: 'text-teal-400', border: 'border-teal-500/30' },
-  alert: { label: 'Urgent Alert', bg: 'bg-red-500/15', text: 'text-red-400', border: 'border-red-500/40' },
-  general: { label: 'General', bg: 'bg-zinc-500/10', text: 'text-zinc-400', border: 'border-zinc-500/30' },
+  academic: { label: 'Academic', bg: 'bg-slate-100', text: 'text-slate-700', border: 'border-slate-200' },
+  exam: { label: 'Examination', bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200' },
+  assignment: { label: 'Assignment', bg: 'bg-amber-50', text: 'text-amber-800', border: 'border-amber-200' },
+  administrative: { label: 'Administrative', bg: 'bg-slate-100', text: 'text-slate-700', border: 'border-slate-200' },
+  event: { label: 'Event', bg: 'bg-slate-100', text: 'text-slate-700', border: 'border-slate-200' },
+  placement: { label: 'Placement', bg: 'bg-slate-100', text: 'text-slate-700', border: 'border-slate-200' },
+  admission: { label: 'Admission', bg: 'bg-slate-100', text: 'text-slate-700', border: 'border-slate-200' },
+  hostel: { label: 'Hostel', bg: 'bg-slate-100', text: 'text-slate-700', border: 'border-slate-200' },
+  fee: { label: 'Fee & Payment', bg: 'bg-amber-50', text: 'text-amber-800', border: 'border-amber-200' },
+  scholarship: { label: 'Scholarship', bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-200' },
+  alert: { label: 'Urgent Alert', bg: 'bg-rose-50', text: 'text-rose-800', border: 'border-rose-200' },
+  general: { label: 'General', bg: 'bg-slate-50', text: 'text-slate-600', border: 'border-slate-200' },
 };
 
 const PRIORITY_BADGES: Record<NoticePriority, { label: string; variant: 'danger' | 'warning' | 'neutral' | 'brand' }> = {
@@ -54,11 +57,11 @@ const PRIORITY_BADGES: Record<NoticePriority, { label: string; variant: 'danger'
 };
 
 const STATUS_BADGES: Record<NoticeStatus, { label: string; bg: string; text: string }> = {
-  pending: { label: 'Pending Review', bg: 'bg-amber-500/15', text: 'text-amber-400' },
-  approved: { label: 'Approved', bg: 'bg-sky-500/15', text: 'text-sky-400' },
-  published: { label: 'Published', bg: 'bg-emerald-500/15', text: 'text-emerald-400' },
-  rejected: { label: 'Rejected', bg: 'bg-rose-500/15', text: 'text-rose-400' },
-  archived: { label: 'Archived', bg: 'bg-zinc-500/15', text: 'text-zinc-400' },
+  pending: { label: 'Pending Review', bg: 'bg-amber-50', text: 'text-amber-800' },
+  approved: { label: 'Approved', bg: 'bg-slate-100', text: 'text-slate-700' },
+  published: { label: 'Published', bg: 'bg-emerald-50', text: 'text-emerald-800' },
+  rejected: { label: 'Rejected', bg: 'bg-rose-50', text: 'text-rose-800' },
+  archived: { label: 'Archived', bg: 'bg-slate-100', text: 'text-slate-600' },
 };
 
 function getSmartLinkButtonLabel(label: string, url: string): string {
@@ -79,17 +82,17 @@ export const NoticeCard: React.FC<NoticeCardProps> = ({
   onArchive,
   onEdit,
   onDelete,
+  onAddToTask,
 }) => {
   const [isConfirmingDelete, setIsConfirmingDelete] = React.useState(false);
   const catStyle = CATEGORY_STYLES[notice.category] || CATEGORY_STYLES.general;
   const priBadge = PRIORITY_BADGES[notice.priority] || PRIORITY_BADGES.normal;
   const statBadge = STATUS_BADGES[notice.status] || STATUS_BADGES.published;
 
-
   return (
     <Card
       padding="lg"
-      className="flex flex-col gap-4 border-[var(--cf-border)] hover:border-[var(--cf-border-strong)] transition-all bg-[var(--cf-surface)] shadow-[var(--cf-elev-1)] hover:shadow-[var(--cf-elev-2)] rounded-2xl relative overflow-hidden"
+      className="flex flex-col gap-4 border-[var(--cf-border)] hover:border-[var(--cf-border-strong)] transition-all bg-[var(--cf-surface)] shadow-[var(--cf-elev-1)] hover:shadow-xs rounded-xl relative overflow-hidden"
     >
       {/* Category & Status Header */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--cf-border-subtle)] pb-3">
@@ -102,6 +105,12 @@ export const NoticeCard: React.FC<NoticeCardProps> = ({
           <Badge variant={priBadge.variant} className="text-[11px] font-semibold">
             {priBadge.label}
           </Badge>
+          {notice.isConverted && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold font-mono bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <CheckSquare className="w-3 h-3 text-emerald-600" />
+              Converted to Task
+            </span>
+          )}
         </div>
 
         {isReviewer && (
@@ -134,18 +143,18 @@ export const NoticeCard: React.FC<NoticeCardProps> = ({
 
         {/* Action Required */}
         {notice.actionRequired && (
-          <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-2.5 text-amber-300 flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+          <div className="rounded-lg bg-amber-50 border border-amber-200 p-2.5 text-amber-900 flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
             <div>
-              <span className="font-bold block text-[11px] uppercase tracking-wider text-amber-400">Action Required</span>
-              <p className="text-xs text-[var(--cf-text)] mt-0.5">{notice.actionRequired}</p>
+              <span className="font-bold block text-[11px] uppercase tracking-wider text-amber-800">Action Required</span>
+              <p className="text-xs text-amber-950 mt-0.5 font-medium">{notice.actionRequired}</p>
             </div>
           </div>
         )}
 
         {/* Important Dates */}
         {notice.importantDates && notice.importantDates.length > 0 && (
-          <div className="space-y-1.5 rounded-xl bg-[var(--cf-surface-muted)] p-2.5 border border-[var(--cf-border-subtle)]">
+          <div className="space-y-1.5 rounded-lg bg-[var(--cf-surface-muted)] p-2.5 border border-[var(--cf-border-subtle)]">
             <span className="flex items-center gap-1.5 font-mono text-[11px] font-bold text-[var(--cf-text-secondary)] uppercase tracking-wider">
               <Calendar className="w-3.5 h-3.5 text-[var(--cf-brand)]" />
               Important Dates
@@ -171,9 +180,19 @@ export const NoticeCard: React.FC<NoticeCardProps> = ({
         )}
       </div>
 
-      {/* Links & Documents Action Area */}
-      {((notice.links && notice.links.length > 0) || (notice.documents && notice.documents.length > 0)) && (
-        <div className="flex flex-wrap gap-2 pt-2 border-t border-[var(--cf-border-subtle)]">
+      {/* Links & Documents / Task Action Area */}
+      {((notice.links && notice.links.length > 0) || (notice.documents && notice.documents.length > 0) || !!onAddToTask) && (
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[var(--cf-border-subtle)]">
+          {onAddToTask && (
+            <button
+              type="button"
+              onClick={() => onAddToTask(notice)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--cf-brand)] text-white hover:bg-[var(--cf-brand-hover)] transition-all text-xs font-semibold cursor-pointer shadow-xs"
+            >
+              <CheckSquare className="w-3.5 h-3.5" />
+              Add to Tasks
+            </button>
+          )}
           {notice.links?.map((link, idx) => (
             <a
               key={`link-${idx}`}
@@ -209,12 +228,13 @@ export const NoticeCard: React.FC<NoticeCardProps> = ({
             <span>Source: {notice.sourceProvider === 'gmail' ? 'Verified University Gmail' : notice.sourceProvider}</span>
             {notice.sourceSender && <span className="hidden sm:inline">({notice.sourceSender})</span>}
           </div>
-          <div className="flex items-center gap-1">
+          <div
+            className="flex items-center gap-1"
+            title={notice.sourceReceivedAt ? `Received: ${formatEmailTimestamp(notice.sourceReceivedAt)}` : undefined}
+          >
             <Clock className="w-3 h-3" />
             <span>
-              {notice.publishedAt
-                ? new Date(notice.publishedAt).toLocaleDateString()
-                : new Date(notice.createdAt).toLocaleDateString()}
+              {formatNoticeDate(notice.sourceReceivedAt || notice.publishedAt || notice.createdAt)}
             </span>
           </div>
         </div>
@@ -240,6 +260,30 @@ export const NoticeCard: React.FC<NoticeCardProps> = ({
           </div>
         )}
       </div>
+
+      {/* Student Action Bar: Convert to Task */}
+      {(onAddToTask || notice.isConverted) && (
+        <div className="pt-2 flex items-center justify-between gap-2 border-t border-[var(--cf-border-subtle)]">
+          {notice.isConverted ? (
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50/80 px-3 py-1.5 rounded-xl border border-emerald-200/60">
+              <CheckSquare className="w-4 h-4 text-emerald-600" />
+              <span>Converted to Task</span>
+            </div>
+          ) : (
+            onAddToTask && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => onAddToTask(notice)}
+                leftIcon={<CheckSquare className="w-3.5 h-3.5 text-[var(--cf-brand)]" />}
+                className="hover:border-[var(--cf-brand)] hover:text-[var(--cf-brand)] text-xs font-medium"
+              >
+                Convert to Task
+              </Button>
+            )
+          )}
+        </div>
+      )}
 
       {/* Reviewer Action Bar (Only rendered for authorized reviewers) */}
       {isReviewer && (

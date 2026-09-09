@@ -38,12 +38,14 @@ export default function App() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/courses" element={<Courses />} />
             <Route path="/assignments" element={<Assignments />} />
+            <Route path="/tasks" element={<Navigate to="/assignments" replace />} />
 
             {/* Canonical Notice Board */}
             <Route path="/notices" element={<NoticeBoard />} />
             <Route path="/notices/:id" element={<CampusItemDetail />} />
 
             {/* Backwards compatibility redirects & deep-links */}
+            <Route path="/feed" element={<Navigate to="/notices" replace />} />
             <Route path="/notice-board" element={<Navigate to="/notices" replace />} />
             <Route path="/campus-feed" element={<Navigate to="/notices" replace />} />
             <Route path="/campus-feed/:id" element={<CampusItemDetail />} />

@@ -26,6 +26,13 @@ export function createTestPool(): pg.Pool {
       description TEXT,
       due_date TEXT,
       status TEXT NOT NULL CHECK (status IN ('PENDING', 'IN_PROGRESS', 'COMPLETED')),
+      due_time TEXT,
+      reminder TEXT,
+      priority TEXT DEFAULT 'medium',
+      source TEXT DEFAULT 'manual',
+      source_id TEXT,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      completed_at TIMESTAMP,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -86,9 +93,13 @@ export function createTestPool(): pg.Pool {
       source_sender TEXT,
       source_subject TEXT,
       status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'published', 'rejected', 'archived')) DEFAULT 'pending',
+      is_converted BOOLEAN NOT NULL DEFAULT FALSE,
+      converted_to_task_id UUID,
+      converted_at TIMESTAMP,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      published_at TIMESTAMP
+      published_at TIMESTAMP,
+      source_received_at TIMESTAMP
     );
 
     CREATE TABLE notifications (

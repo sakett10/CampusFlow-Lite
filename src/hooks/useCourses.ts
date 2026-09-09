@@ -15,7 +15,19 @@ export function useCourses() {
 
     try {
       const token = await getToken();
-      if (!token) throw new Error('Authentication required');
+      if (!token) {
+        if (
+          typeof window !== 'undefined' &&
+          (new URLSearchParams(window.location.search).get('demo') === '1' ||
+            window.sessionStorage?.getItem('cf_demo') === '1')
+        ) {
+          setCourses(getDemoCourses());
+          setError(null);
+          setIsLoading(false);
+          return;
+        }
+        throw new Error('Authentication required');
+      }
 
       const response = await fetch(API_URL, {
         headers: { Authorization: `Bearer ${token}` }
@@ -172,4 +184,49 @@ export function useCourses() {
     refetch: loadCourses,
     refresh: loadCourses,
   };
+}
+
+function getDemoCourses(): Course[] {
+  return [
+    {
+      id: 'CS401',
+      code: 'CS401',
+      title: 'Machine Learning',
+      instructor: 'Dr. Ramesh Kumar',
+      credits: 4,
+      attendedClasses: 22,
+      totalClasses: 24,
+      attendanceThreshold: 75,
+    },
+    {
+      id: 'MATH302',
+      code: 'MATH302',
+      title: 'Differential Equations',
+      instructor: 'Prof. S. N. Roy',
+      credits: 3,
+      attendedClasses: 18,
+      totalClasses: 20,
+      attendanceThreshold: 75,
+    },
+    {
+      id: 'EE201',
+      code: 'EE201',
+      title: 'Analog Circuits',
+      instructor: 'Dr. P. Sen',
+      credits: 4,
+      attendedClasses: 19,
+      totalClasses: 22,
+      attendanceThreshold: 75,
+    },
+    {
+      id: 'CS305',
+      code: 'CS305',
+      title: 'Algorithm Analysis',
+      instructor: 'Dr. A. Verma',
+      credits: 4,
+      attendedClasses: 21,
+      totalClasses: 24,
+      attendanceThreshold: 75,
+    },
+  ];
 }

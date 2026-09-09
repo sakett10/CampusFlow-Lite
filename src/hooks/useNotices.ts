@@ -37,6 +37,15 @@ export function useNotices(initialFilters?: NoticeFiltersState) {
     try {
       const headers = await getAuthHeaders();
       if (!headers.Authorization) {
+        if (
+          typeof window !== 'undefined' &&
+          (new URLSearchParams(window.location.search).get('demo') === '1' ||
+            window.sessionStorage?.getItem('cf_demo') === '1')
+        ) {
+          setNotices(getDemoNotices());
+          setError(null);
+          return;
+        }
         setNotices([]);
         setError('Authentication required');
         return;
@@ -81,6 +90,16 @@ export function useNotices(initialFilters?: NoticeFiltersState) {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadNotices();
+  }, [loadNotices]);
+
+  useEffect(() => {
+    const handleRefresh = () => {
+      loadNotices();
+    };
+    window.addEventListener('campusflow:refresh-notices', handleRefresh);
+    return () => {
+      window.removeEventListener('campusflow:refresh-notices', handleRefresh);
+    };
   }, [loadNotices]);
 
   const approveNotice = async (id: string) => {
@@ -219,6 +238,39 @@ export function useNotices(initialFilters?: NoticeFiltersState) {
     return created;
   };
 
+  const convertToTask = async (
+    id: string,
+    customData?: {
+      title?: string;
+      dueDate?: string;
+      dueTime?: string | null;
+      reminder?: string | null;
+      priority?: 'low' | 'medium' | 'high' | 'urgent';
+      courseId?: string | null;
+    },
+  ) => {
+    const headers = await getAuthHeaders();
+    if (!headers.Authorization) throw new Error('Authentication required');
+
+    const response = await fetch(`/api/notices/${id}/convert-to-task`, {
+      method: 'POST',
+      headers: {
+        ...headers,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(customData || {}),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to convert notice to task');
+    }
+
+    const data: { task: unknown; notice: Notice; alreadyConverted: boolean } = await response.json();
+    setNotices((prev) => prev.map((n) => (n.id === id ? data.notice : n)));
+    return data;
+  };
+
   return {
     notices,
     isLoading,
@@ -234,5 +286,79 @@ export function useNotices(initialFilters?: NoticeFiltersState) {
     updateNotice,
     deleteNotice,
     ingestFromGmail,
+    convertToTask,
   };
+}
+
+function getDemoNotices(): Notice[] {
+  const today = new Date().toISOString().split('T')[0];
+  const in3Days = new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0];
+  const in6Days = new Date(Date.now() + 86400000 * 6).toISOString().split('T')[0];
+
+  return [
+    {
+      id: 'demo-notice-1',
+      createdByUserId: 'demo_user',
+      title: 'Mid-Semester Project Proposal Submission & Presentation Schedule',
+      summary:
+        'All enrolled undergraduate students must submit their capstone project proposals via the departmental academic portal before the deadline.',
+      category: 'academic',
+      priority: 'urgent',
+      actionRequired:
+        'Submit 4-page PDF proposal documentation and confirm faculty mentor assignment.',
+      importantDates: [
+        { label: 'Proposal Submission Deadline', date: `${today} 23:59` },
+        { label: 'Evaluation Panel Presentations', date: `${in6Days} 10:00` },
+      ],
+      venue: 'Department Seminar Hall & Virtual Portal',
+      sourceProvider: 'gmail',
+      sourceSender: 'Office of Dean Academics <academics@campus.edu>',
+      sourceSubject: 'Urgent: Mid-Semester Capstone Project Submissions',
+      status: 'published',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      publishedAt: new Date().toISOString(),
+    },
+    {
+      id: 'demo-notice-2',
+      createdByUserId: 'demo_user',
+      title: 'Annual Inter-College Autonomous Robotics & AI Challenge 2026',
+      summary:
+        'Registrations are open for the annual multi-university robotics competition. Tracks include vision navigation, LLM agent swarms, and drone routing.',
+      category: 'event',
+      priority: 'important',
+      actionRequired:
+        'Register teams of 3-4 members and submit project abstracts.',
+      importantDates: [
+        { label: 'Early Registration Closes', date: `${in3Days} 18:00` },
+      ],
+      venue: 'Main Campus Gymnasium & Makerspace',
+      sourceProvider: 'official_feed',
+      sourceSender: 'Robotics & AI Society <robotics@campus.edu>',
+      sourceSubject: 'Robotics Challenge 2026 Announcement',
+      status: 'published',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      publishedAt: new Date().toISOString(),
+    },
+    {
+      id: 'demo-notice-3',
+      createdByUserId: 'demo_user',
+      title: 'Campus Central Library Extended Study Hours & Quiet Zones',
+      summary:
+        'Beginning this week, the central university library will remain open 24/7 with dedicated silent floors for mid-semester study.',
+      category: 'general',
+      priority: 'normal',
+      actionRequired: null,
+      importantDates: [],
+      venue: 'Central University Library Floors 2-4',
+      sourceProvider: 'official_feed',
+      sourceSender: 'University Librarian <library@campus.edu>',
+      sourceSubject: 'Extended Study Hours for Examinations',
+      status: 'published',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      publishedAt: new Date().toISOString(),
+    },
+  ];
 }

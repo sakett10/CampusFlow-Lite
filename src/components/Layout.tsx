@@ -3,16 +3,11 @@ import SidebarNav from './nav/SidebarNav';
 import TopBar from './nav/TopBar';
 import BottomTabNav from './nav/BottomTabNav';
 import NotificationBell from './NotificationBell';
-import { UserButton, useUser } from '@clerk/clerk-react';
+import { UserButton } from '@clerk/clerk-react';
 import { useGmailAutoSync } from '../hooks/useGmailAutoSync';
 
 export default function Layout() {
-  const { user } = useUser();
-  const isReviewer = Boolean(
-    user?.publicMetadata?.role === 'reviewer' ||
-    user?.publicMetadata?.role === 'admin'
-  );
-  const { isSyncing, isConnected, lastSyncTime } = useGmailAutoSync(300000, isReviewer);
+  const { isSyncing, isConnected, lastSyncTime } = useGmailAutoSync(300000, true);
 
   return (
     <div className="flex h-dvh max-w-full overflow-x-hidden bg-[var(--cf-bg)] font-[family-name:var(--cf-font-sans)] text-[var(--cf-text)]">
@@ -38,7 +33,7 @@ export default function Layout() {
           <NotificationBell />
         </div>
 
-        {isReviewer && isConnected && (
+        {isConnected && (
           <div className="px-6 py-2 border-b border-[var(--cf-border-subtle)] bg-[var(--cf-surface-muted)]/50 flex items-center justify-between text-[10px] font-mono text-[var(--cf-text-secondary)]">
             <span className="flex items-center gap-1.5">
               <span className={`h-1.5 w-1.5 rounded-full ${isSyncing ? 'bg-amber-400 animate-ping' : 'bg-emerald-400'}`} />

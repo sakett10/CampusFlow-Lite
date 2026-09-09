@@ -38,8 +38,8 @@ export function isOverdue(dueDateStr: string, status: string): boolean {
   return dueDate.getTime() < Date.now();
 }
 
-export function formatDueDate(dateStr: string): string {
-  if (!isValidDateString(dateStr)) return 'Invalid Date';
+export function formatDueDate(dateStr: string | null | undefined): string {
+  if (!dateStr || !isValidDateString(dateStr)) return 'No due date';
 
   const [year, month, day] = dateStr.split('-').map(Number);
   const date = new Date(year, month - 1, day);
@@ -51,8 +51,8 @@ export function formatDueDate(dateStr: string): string {
   });
 }
 
-export function daysUntil(dateStr: string): number {
-  if (!isValidDateString(dateStr)) return Infinity;
+export function daysUntil(dateStr: string | null | undefined): number {
+  if (!dateStr || !isValidDateString(dateStr)) return Infinity;
 
   const [year, month, day] = dateStr.split('-').map(Number);
 
@@ -109,4 +109,67 @@ export function formatCalendarDay(dateStr: string): string {
   const parsed = parseCalendarDate(dateStr);
   if (!parsed) return '';
   return String(parsed.day);
+}
+
+/**
+ * Formats an authoritative email received timestamp (e.g. "10 Sep, 8:42 PM").
+ */
+export function formatEmailTimestamp(isoOrDate: string | Date | null | undefined): string {
+  if (!isoOrDate) return '';
+  const d = typeof isoOrDate === 'string' ? new Date(isoOrDate) : isoOrDate;
+  if (Number.isNaN(d.getTime())) return '';
+
+  const now = new Date();
+  const sameYear = d.getFullYear() === now.getFullYear();
+
+  const datePart = d.toLocaleDateString('en-US', {
+    day: 'numeric',
+    month: 'short',
+    ...(sameYear ? {} : { year: 'numeric' }),
+  });
+
+  const timePart = d.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+
+  return `${datePart}, ${timePart}`;
+}
+
+/**
+ * Formats a notice publication/received timestamp (e.g. "10 Sep").
+ */
+export function formatNoticeDate(isoOrDate: string | Date | null | undefined): string {
+  if (!isoOrDate) return '';
+  const d = typeof isoOrDate === 'string' ? new Date(isoOrDate) : isoOrDate;
+  if (Number.isNaN(d.getTime())) return '';
+
+  const now = new Date();
+  const sameYear = d.getFullYear() === now.getFullYear();
+
+  return d.toLocaleDateString('en-US', {
+    day: 'numeric',
+    month: 'short',
+    ...(sameYear ? {} : { year: 'numeric' }),
+  });
+}
+
+/**
+ * Formats a task due date (e.g. "Due 12 Sep" or "No due date").
+ */
+export function formatTaskDueDate(dueDateStr: string | null | undefined): string {
+  if (!dueDateStr || !isValidDateString(dueDateStr)) {
+    return 'No due date';
+  }
+
+  const [year, month, day] = dueDateStr.split('-').map(Number);
+  const target = new Date(year, month - 1, day);
+
+  const formatted = target.toLocaleDateString('en-US', {
+    day: 'numeric',
+    month: 'short',
+  });
+
+  return `Due ${formatted}`;
 }

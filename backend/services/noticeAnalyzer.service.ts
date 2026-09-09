@@ -4,8 +4,62 @@ import type {
   StructuredGmailMessage,
 } from '../types.js';
 
-
 import { validateNoticeCandidate } from './noticeValidator.js';
+import { classifyEmail } from './emailClassifier.service.js';
+
+export function extractHeuristicCandidate(
+  message: StructuredGmailMessage,
+): Record<string, unknown> {
+  const classification = classifyEmail(message);
+  const text = `${message.subject || ''} ${message.bodyText || message.snippet || ''}`;
+
+  const importantDates: Array<{ label: string; date: string }> = [];
+  const dateMatches = text.match(
+    /(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s*\d{4})|(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4})|(?:\d{4}-\d{2}-\d{2})/gi,
+  );
+  if (dateMatches) {
+    const unique = Array.from(new Set(dateMatches.map((d) => d.trim()))).slice(0, 3);
+    for (const d of unique) {
+      importantDates.push({ label: 'Important Date', date: d });
+    }
+  }
+
+  const links: Array<{ label: string; url: string }> = [];
+  const urlMatches = text.match(/https?:\/\/[^\s)"]+/gi);
+  if (urlMatches) {
+    const unique = Array.from(new Set(urlMatches)).slice(0, 3);
+    for (const u of unique) {
+      links.push({ label: 'Link', url: u });
+    }
+  }
+
+  const lower = text.toLowerCase();
+  let priority = 'normal';
+  if (lower.includes('urgent') || lower.includes('immediately') || lower.includes('within 24')) {
+    priority = 'urgent';
+  } else if (lower.includes('deadline') || lower.includes('last date') || lower.includes('due date')) {
+    priority = 'important';
+  }
+
+  const cleanBody = (message.bodyText || message.snippet || message.subject || 'Campus Notice')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const summary = cleanBody.length > 250 ? cleanBody.slice(0, 247) + '...' : cleanBody;
+
+  return {
+    title: message.subject?.trim() || 'Campus Notice',
+    summary: summary || 'Campus Announcement',
+    category: classification.category || 'academic',
+    priority,
+    importantDates,
+    links,
+    documents: [],
+    actionRequired: priority === 'urgent' || priority === 'important' ? 'Review details and complete required steps.' : null,
+    venue: null,
+    isCampusWide: !classification.isPersonal,
+    isPersonal: classification.isPersonal,
+  };
+}
 
 export interface NoticeAnalyzer {
   analyze(message: StructuredGmailMessage): Promise<NoticeCandidate>;
@@ -159,11 +213,12 @@ export class AINoticeAnalyzer implements NoticeAnalyzer {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'openai/gpt-oss-20b',
+        model: 'qwen/qwen3.8-27b',
         messages: [
           {
             role: 'system',
-            content: 'You extract structured notice information from university emails. Return only valid JSON.',
+            content:
+              'You extract structured notice information from university emails. You must return valid JSON with: title (string), summary (string), category (string), priority ("low"|"normal"|"important"|"urgent"), audience (string or null), importantDates (array of {label: string, date: string}), actionRequired (string or null), venue (string or null), links (array of {label: string, url: string}), documents (array of {label: string, url: string}), isCampusWide (boolean), isPersonal (boolean).',
           },
           {
             role: 'user',
@@ -171,14 +226,7 @@ export class AINoticeAnalyzer implements NoticeAnalyzer {
           },
         ],
         temperature: 0,
-        response_format: {
-          type: 'json_schema',
-          json_schema: {
-            name: 'notice_candidate',
-            strict: true,
-            schema: noticeCandidateSchema,
-          },
-        },
+        response_format: { type: 'json_object' },
       }),
     });
 
@@ -187,7 +235,9 @@ export class AINoticeAnalyzer implements NoticeAnalyzer {
       throw new Error(`Groq API error ${response.status}: ${errorText}`);
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
     const content = data?.choices?.[0]?.message?.content;
 
     if (!content) {
@@ -204,16 +254,15 @@ export class AINoticeAnalyzer implements NoticeAnalyzer {
     try {
       rawResult = await this.analyzeWithGemini(promptText);
     } catch (geminiError) {
-      console.error('Gemini Notice Analysis failed, attempting Groq fallback:', geminiError);
+      console.warn('Gemini notice analysis unavailable/failed, trying Groq fallback:', (geminiError as Error)?.message || geminiError);
 
       try {
         rawResult = await this.analyzeWithGroq(promptText);
       } catch (groqError) {
-        console.error('Groq fallback also failed:', groqError);
-        throw new Error(
-          'Both AI providers failed to analyze the notice. Please try again later.',
-          { cause: groqError },
-        );
+        console.warn('Groq fallback also failed:', (groqError as Error)?.message || groqError);
+        const err = new Error('Both AI providers failed to analyze the notice. Please try again later.');
+        (err as unknown as { cause?: unknown }).cause = groqError;
+        throw err;
       }
     }
 

@@ -189,7 +189,9 @@ async function analyzeWithGroq(text: string): Promise<AnalysisResult> {
     throw new Error(`Groq API error ${response.status}: ${errorText}`);
   }
 
-  const data = await response.json();
+  const data = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
   const content = data?.choices?.[0]?.message?.content;
 
   if (!content) {
@@ -215,11 +217,9 @@ export const aiService = {
       } catch (groqError) {
         console.error('Groq fallback also failed:', groqError);
 
-        throw new Error(
-          'Both AI providers are currently unavailable. Please try again later.',
-          { cause: groqError }
-        );
+        // eslint-disable-next-line preserve-caught-error
+        throw new Error('Both AI providers are currently unavailable. Please try again later.');
       }
     }
   }
-};
+};

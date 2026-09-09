@@ -1,8 +1,9 @@
 import { Router } from 'express';
-import { getAuth, requireAuth } from '@clerk/express';
+import { getAuth } from '@clerk/express';
 import { google } from 'googleapis';
 import {
   gmailOAuth2Client,
+  createOAuth2Client,
   getGoogleAuthUrl,
   createOAuthState,
   verifyOAuthState,
@@ -16,7 +17,7 @@ import { noticeAnalyzerService } from '../services/noticeAnalyzer.service.js';
 import { NoticeValidationError } from '../services/noticeValidator.js';
 import { pool } from '../db.js';
 import { randomUUID } from 'node:crypto';
-import { isReviewer } from '../middleware/requireAuth.js';
+import { isReviewer, requireAuth } from '../middleware/requireAuth.js';
 import { encryptToken, decryptToken } from '../services/crypto.service.js';
 
 const router = Router();
@@ -120,18 +121,20 @@ router.post('/disconnect', requireAuth(), async (req, res) => {
  * GET /api/gmail/callback
  */
 router.get('/callback', async (req, res) => {
-  const { code, state } = req.query;
+  const { code, state, error } = req.query;
+  const frontendBase = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+
+  if (error) {
+    console.warn('Google OAuth returned error param:', error);
+    return res.redirect(`${frontendBase}/settings?gmail_error=${encodeURIComponent(String(error))}`);
+  }
 
   if (!code || typeof code !== 'string') {
-    return res.status(400).json({
-      error: 'Missing authorization code',
-    });
+    return res.redirect(`${frontendBase}/settings?gmail_error=missing_code`);
   }
 
   if (!state || typeof state !== 'string') {
-    return res.status(400).json({
-      error: 'Missing OAuth state',
-    });
+    return res.redirect(`${frontendBase}/settings?gmail_error=missing_state`);
   }
 
   let userId: string;
@@ -139,26 +142,17 @@ router.get('/callback', async (req, res) => {
   try {
     ({ userId } = verifyOAuthState(state));
   } catch {
-    return res.status(400).json({
-      error: 'Invalid or expired OAuth state',
-    });
+    return res.redirect(`${frontendBase}/settings?gmail_error=invalid_state`);
   }
 
   try {
     const { tokens } = await gmailOAuth2Client.getToken(code);
 
     if (!tokens.access_token || !tokens.refresh_token) {
-      return res.status(400).json({
-        error: 'Google did not provide the required OAuth tokens',
-      });
+      return res.redirect(`${frontendBase}/settings?gmail_error=missing_tokens`);
     }
 
-    const authClient = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      process.env.GOOGLE_REDIRECT_URI,
-    );
-
+    const authClient = createOAuth2Client();
     authClient.setCredentials(tokens);
 
     const gmail = google.gmail({
@@ -173,9 +167,7 @@ router.get('/callback', async (req, res) => {
     const googleEmail = profile.data.emailAddress;
 
     if (!googleEmail) {
-      return res.status(400).json({
-        error: 'Could not determine Google account email',
-      });
+      return res.redirect(`${frontendBase}/settings?gmail_error=no_email`);
     }
 
     await pool.query(
@@ -208,14 +200,14 @@ router.get('/callback', async (req, res) => {
     );
 
     return res.redirect(
-      `${process.env.FRONTEND_URL}/settings?gmail=connected`,
+      `${frontendBase}/settings?gmail=connected`,
     );
   } catch (error) {
     console.error('Google OAuth callback failed:', error);
 
-    return res.status(500).json({
-      error: 'Failed to complete Google OAuth',
-    });
+    return res.redirect(
+      `${frontendBase}/settings?gmail_error=oauth_failed`,
+    );
   }
 });
 
@@ -443,7 +435,10 @@ router.post('/sync', requireAuth(), async (req, res) => {
 
   try {
     const reviewer = isReviewer(req);
-    const stats = await syncGmailMessagesForUser(userId, 30, reviewer);
+    const batchSize = typeof req.body?.batchSize === 'number' ? req.body.batchSize : 30;
+    const query = typeof req.body?.query === 'string' ? req.body.query : (typeof req.query?.q === 'string' ? (req.query.q as string) : undefined);
+    const syncHistorical = Boolean(req.body?.syncHistorical || req.query?.syncHistorical);
+    const stats = await syncGmailMessagesForUser(userId, batchSize, reviewer, { query, syncHistorical });
     return res.json(stats);
 
   } catch (error) {

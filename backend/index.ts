@@ -24,8 +24,13 @@ const allowedOrigins = [
 
 app.use(
   cors({
-    origin: (origin, callback) => {
-      if (!origin || process.env.NODE_ENV === 'test' || allowedOrigins.includes(origin)) {
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+      if (
+        !origin ||
+        process.env.NODE_ENV === 'test' ||
+        allowedOrigins.includes(origin) ||
+        origin.endsWith('.vercel.app')
+      ) {
         return callback(null, true);
       }
       return callback(new Error('Blocked by CORS policy'));
@@ -35,22 +40,27 @@ app.use(
 );
 app.use(express.json());
 
-
-
 // Attach Clerk auth context globally
 app.use(clerkAuth);
 
-// Fully protected routes
-app.use('/api/courses', requireAuthMiddleware, coursesRouter);
-app.use('/api/assignments', requireAuthMiddleware, assignmentsRouter);
-app.use('/api/ai', requireAuthMiddleware, aiRouter);
-app.use('/api/gmail', gmailRouter);
-app.use('/api/notices', noticesRouter);
-app.use('/api/notifications', notificationsRouter);
+// Define API router
+const apiRouter = express.Router();
+apiRouter.get('/health', (_req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
 
+apiRouter.use('/courses', requireAuthMiddleware, coursesRouter);
+apiRouter.use('/assignments', requireAuthMiddleware, assignmentsRouter);
+apiRouter.use('/tasks', requireAuthMiddleware, assignmentsRouter);
+apiRouter.use('/ai', requireAuthMiddleware, aiRouter);
+apiRouter.use('/gmail', gmailRouter);
+apiRouter.use('/notices', noticesRouter);
+apiRouter.use('/notifications', notificationsRouter);
+apiRouter.use('/campus-items', campusItemsRouter);
 
-// Partially protected route (GET is public, mutations are protected inside)
-app.use('/api/campus-items', campusItemsRouter);
+// Mount under both /api and / to handle both direct /api routes and Vercel serverless rewrites
+app.use('/api', apiRouter);
+app.use('/', apiRouter);
 
-
+export { app };
 export default app;

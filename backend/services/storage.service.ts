@@ -91,9 +91,12 @@ export function parseDateString(dateStr: string): { year: number; month: number;
 }
 
 export function isItemActive(
-  item: { date?: string | null; endTime?: string | null; registrationDeadline?: string | null },
+  item: { type?: string; date?: string | null; endTime?: string | null; registrationDeadline?: string | null },
   referenceNowMs?: number,
 ): boolean {
+  if (item.type === 'ANNOUNCEMENT') {
+    return true;
+  }
   const dateStr = item.date || item.registrationDeadline;
   if (!dateStr) return true;
 
@@ -182,12 +185,22 @@ export const storageService = {
     const seenItemKeys = new Set<string>();
 
     try {
+      const reviewerIds = (process.env.REVIEWER_USER_IDS || '').split(',').map((s) => s.trim()).filter(Boolean);
+      const adminIds = (process.env.ADMIN_USER_IDS || '').split(',').map((s) => s.trim()).filter(Boolean);
+      const authorizedIds = Array.from(new Set(['admin', ...reviewerIds, ...adminIds]));
+
       const { rows: noticeRows } = await pool.query(
         `
         SELECT * FROM notices 
-        WHERE status = 'published' 
-        ORDER BY (CASE WHEN published_at IS NOT NULL THEN published_at ELSE created_at END) DESC, created_at DESC
+        WHERE status = 'published' AND (
+          created_by_user_id = $1 OR
+          source_account_email IS NULL OR
+          created_by_user_id = ANY($2::text[]) OR
+          created_by_user_id LIKE 'reviewer%'
+        )
+        ORDER BY COALESCE(source_received_at, published_at, created_at) DESC, created_at DESC
         `,
+        [userId, authorizedIds],
       );
 
       publishedNoticeItems = noticeRows
@@ -231,14 +244,69 @@ export const storageService = {
           };
         })
         .filter((item) => isItemActive(item));
-
     } catch {
       // Continue if query fails
     }
 
-    // 3. Merge published notices and personal items with deduplication
+    // 3. User-specific Gmail notices (student's private synced emails)
+    let emailNoticeItems: CampusItem[] = [];
+    try {
+      const { rows: emailRows } = await pool.query(
+        `
+        SELECT * FROM campus_emails
+        WHERE user_id = $1 AND analysis_status = 'completed'
+        ORDER BY received_at DESC NULLS LAST, created_at DESC
+        `,
+        [userId],
+      );
+
+      emailNoticeItems = emailRows
+        .filter((row) => !isPersonalCertificateEmail(row))
+        .map((row) => {
+          let itemType: CampusItem['type'] = 'ANNOUNCEMENT';
+          if (row.category === 'exam' || row.category === 'assignment') {
+            itemType = 'DEADLINE';
+          } else if (row.category === 'event') {
+            itemType = 'EVENT';
+          }
+
+          let actions: string[] = [];
+          if (Array.isArray(row.important_actions)) {
+            actions = row.important_actions;
+          } else if (typeof row.important_actions === 'string') {
+            try {
+              const parsed = JSON.parse(row.important_actions);
+              if (Array.isArray(parsed)) actions = parsed;
+            } catch {
+              // ignore json parse error
+            }
+          }
+
+          return {
+            id: row.id,
+            title: row.subject || 'Campus Email Notice',
+            type: itemType,
+            description: row.summary || row.snippet || row.body_text || '',
+            date: row.event_date || null,
+            startTime: null,
+            endTime: null,
+            registrationDeadline: row.deadline || null,
+            venue: row.venue || null,
+            eligibility: row.audience || null,
+            organizer: row.organizer || row.sender_name || row.sender_email || 'Campus Email',
+            importantActions: actions,
+            sourceText: row.summary || row.snippet || row.body_text || '',
+            sourceType: 'email' as const,
+          };
+        })
+        .filter((item) => isItemActive(item));
+    } catch {
+      // Continue if query fails
+    }
+
+    // 4. Merge published notices, student email notices, and personal items with deduplication
     const result: CampusItem[] = [];
-    for (const item of [...publishedNoticeItems, ...personalItems]) {
+    for (const item of [...publishedNoticeItems, ...emailNoticeItems, ...personalItems]) {
       const key = `${(item.title || '').trim().toLowerCase()}|${item.date || ''}`;
       if (!seenItemKeys.has(key)) {
         seenItemKeys.add(key);
@@ -298,6 +366,10 @@ export const storageService = {
 
   delete: async (userId: string, id: string): Promise<boolean> => {
     const { rowCount } = await pool.query('DELETE FROM campus_items WHERE id = $1 AND user_id = $2', [id, userId]);
-    return (rowCount ?? 0) > 0;
+    if ((rowCount ?? 0) > 0) {
+      return true;
+    }
+    const emailDelete = await pool.query('DELETE FROM campus_emails WHERE id = $1 AND user_id = $2', [id, userId]);
+    return (emailDelete.rowCount ?? 0) > 0;
   },
 };

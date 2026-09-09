@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { getAuth, requireAuth } from '@clerk/express';
-import { isReviewer } from '../middleware/requireAuth.js';
+import { getAuth } from '@clerk/express';
+import { isReviewer, requireAuth } from '../middleware/requireAuth.js';
 import { notificationsService } from '../services/notifications.service.js';
 
 const router = Router();
@@ -32,16 +32,17 @@ router.get('/', requireAuth(), async (req, res) => {
 
 /**
  * Mark a single notification as read
- * POST /api/notifications/:id/read
+ * POST /api/notifications/:id/read or PATCH /api/notifications/:id/read
  */
-router.post('/:id/read', requireAuth(), async (req, res) => {
+const markReadHandler = async (req: import('express').Request, res: import('express').Response) => {
   const auth = getAuth(req);
   if (!auth?.userId) {
     return res.status(401).json({ error: 'Unauthenticated' });
   }
 
-  const { id } = req.params;
-  if (!id) {
+  const rawId = req.params.id;
+  const id = Array.isArray(rawId) ? rawId[0] : rawId;
+  if (!id || typeof id !== 'string') {
     return res.status(400).json({ error: 'Invalid notification ID' });
   }
 
@@ -52,7 +53,10 @@ router.post('/:id/read', requireAuth(), async (req, res) => {
     console.error('Failed to mark notification as read:', error);
     return res.status(500).json({ error: 'Failed to mark notification as read' });
   }
-});
+};
+
+router.post('/:id/read', requireAuth(), markReadHandler);
+router.patch('/:id/read', requireAuth(), markReadHandler);
 
 /**
  * Mark all notifications as read

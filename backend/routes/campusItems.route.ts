@@ -35,7 +35,10 @@ router.delete('/:id', requireAuthMiddleware, async (req, res) => {
   try {
     const { userId } = getAuth(req);
     if (!userId) return res.status(401).send();
-    const success = await storageService.delete(userId, req.params.id);
+    const rawId = req.params.id;
+    const id = Array.isArray(rawId) ? rawId[0] : rawId;
+    if (!id) return res.status(400).json({ error: 'Invalid ID' });
+    const success = await storageService.delete(userId, id);
 
     if (success) {
       res.status(204).send();

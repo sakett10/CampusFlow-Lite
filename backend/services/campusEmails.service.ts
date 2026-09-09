@@ -37,6 +37,7 @@ export const campusEmailsService = {
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
       )
       ON CONFLICT (source_account_email, source_message_id) DO UPDATE SET
+        received_at = COALESCE(EXCLUDED.received_at, campus_emails.received_at),
         subject = EXCLUDED.subject,
         body_text = COALESCE(EXCLUDED.body_text, campus_emails.body_text),
         snippet = COALESCE(EXCLUDED.snippet, campus_emails.snippet),
@@ -143,6 +144,26 @@ export const campusEmailsService = {
     `;
 
     const { rows } = await pool.query(query, [errorMessage, sourceAccountEmail, sourceMessageId]);
+    if (rows.length === 0) return null;
+    return mapRowToCampusEmail(rows[0]);
+  },
+
+  markIgnoredPersonal: async (
+    sourceAccountEmail: string,
+    sourceMessageId: string,
+    reason: string,
+  ): Promise<CampusEmail | null> => {
+    const query = `
+      UPDATE campus_emails
+      SET
+        analysis_status = 'ignored_personal',
+        analysis_error = $1,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE source_account_email = $2 AND source_message_id = $3
+      RETURNING *
+    `;
+
+    const { rows } = await pool.query(query, [reason, sourceAccountEmail, sourceMessageId]);
     if (rows.length === 0) return null;
     return mapRowToCampusEmail(rows[0]);
   },

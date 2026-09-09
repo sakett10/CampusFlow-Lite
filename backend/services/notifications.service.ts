@@ -20,6 +20,90 @@ async function ensureDismissalTable() {
   }
 }
 
+export function getTaskDeadline(dueDate: string, dueTime?: string | null): Date | null {
+  if (!dueDate) return null;
+  const dateParts = dueDate.split('-').map(Number);
+  if (dateParts.length !== 3 || dateParts.some(isNaN)) {
+    return null;
+  }
+  const [year, month, day] = dateParts;
+
+  let hours = 23;
+  let minutes = 59;
+  if (dueTime && dueTime.trim()) {
+    const timeParts = dueTime.trim().split(':').map(Number);
+    if (timeParts.length >= 2 && !isNaN(timeParts[0]) && !isNaN(timeParts[1])) {
+      hours = timeParts[0];
+      minutes = timeParts[1];
+    }
+  }
+
+  return new Date(year, month - 1, day, hours, minutes, 0, 0);
+}
+
+export function calculateReminderTriggerTime(
+  dueDate: string,
+  dueTime?: string | null,
+  reminderRule?: string | null,
+): Date | null {
+  if (!dueDate || !reminderRule || reminderRule === 'none') {
+    return null;
+  }
+
+  const deadline = getTaskDeadline(dueDate, dueTime);
+  if (!deadline) return null;
+
+  const dateParts = dueDate.split('-').map(Number);
+  const [year, month, day] = dateParts;
+
+  switch (reminderRule) {
+    case '2h_before':
+      return new Date(deadline.getTime() - 2 * 60 * 60 * 1000);
+    case 'morning_of': {
+      const morningOf = new Date(year, month - 1, day, 9, 0, 0, 0);
+      if (morningOf.getTime() >= deadline.getTime()) {
+        return new Date(deadline.getTime() - 2 * 60 * 60 * 1000);
+      }
+      return morningOf;
+    }
+    case '1d_before':
+      return new Date(deadline.getTime() - 24 * 60 * 60 * 1000);
+    case '2d_before':
+      return new Date(deadline.getTime() - 48 * 60 * 60 * 1000);
+    default:
+      return null;
+  }
+}
+
+export function isTaskOverdue(
+  task: {
+    dueDate: string;
+    dueTime?: string | null;
+    status: string;
+  },
+  now: Date = new Date(),
+): boolean {
+  if (task.status === 'COMPLETED') return false;
+  const deadline = getTaskDeadline(task.dueDate, task.dueTime);
+  if (!deadline) return false;
+  return now.getTime() > deadline.getTime();
+}
+
+export function isTaskReminderDue(
+  task: {
+    dueDate: string;
+    dueTime?: string | null;
+    reminder?: string | null;
+    status: string;
+  },
+  now: Date = new Date(),
+): boolean {
+  if (task.status === 'COMPLETED') return false;
+  const trigger = calculateReminderTriggerTime(task.dueDate, task.dueTime, task.reminder);
+  if (!trigger) return false;
+  return now.getTime() >= trigger.getTime();
+}
+
 export const notificationsService = {
   create: async (data: {
     userId?: string | null;
@@ -173,6 +257,49 @@ export const notificationsService = {
       // Ignore if notices table not available
     }
 
+    // 3. Compute dynamic task deadline reminders for active tasks with reminder rules
+    try {
+      const { rows: taskRows } = await pool.query(
+        `
+        SELECT id, title, due_date, due_time, reminder, priority, status
+        FROM assignments
+        WHERE user_id = $1 AND status != 'COMPLETED' AND reminder IS NOT NULL AND reminder != 'none'
+        `,
+        [userId],
+      );
+
+      const now = new Date();
+      for (const t of taskRows) {
+        const triggerTime = calculateReminderTriggerTime(t.due_date, t.due_time, t.reminder);
+        if (triggerTime && now.getTime() >= triggerTime.getTime()) {
+          const reminderId = `task-remind-${t.id}-${t.due_date}-${t.due_time || '23:59'}-${t.reminder}`;
+          const isRead = dismissedIds.has(reminderId);
+          const deadline = getTaskDeadline(t.due_date, t.due_time);
+          const isOverdue = deadline ? now.getTime() > deadline.getTime() : false;
+          const timeStr = t.due_time ? ` at ${t.due_time}` : '';
+
+          const notifTitle = isOverdue ? '⚠️ Overdue Task' : '⏰ Task Deadline Reminder';
+          const notifMsg = isOverdue
+            ? `Overdue: "${t.title}" was due on ${t.due_date}${timeStr}.`
+            : `Reminder: "${t.title}" is due on ${t.due_date}${timeStr}.`;
+
+          dynamicReminders.push({
+            id: reminderId,
+            userId,
+            recipientRole: 'student',
+            title: notifTitle,
+            message: notifMsg,
+            type: 'deadline_reminder',
+            link: '/assignments',
+            isRead,
+            createdAt: triggerTime.toISOString(),
+          });
+        }
+      }
+    } catch {
+      // Continue even if assignments table lookup fails in isolated test environments
+    }
+
     return [...dynamicReminders, ...persisted];
   },
 
@@ -192,7 +319,7 @@ export const notificationsService = {
     }
 
     // If it is a dynamic reminder, dismissal record above is sufficient
-    if (notificationId.startsWith('deadline-')) {
+    if (notificationId.startsWith('deadline-') || notificationId.startsWith('task-remind-')) {
       return;
     }
 
@@ -237,7 +364,7 @@ export const notificationsService = {
     try {
       const currentNotifications = await notificationsService.getAllForUser(userId, true);
       const dynamicIds = currentNotifications
-        .filter((n) => n.id.startsWith('deadline-'))
+        .filter((n) => n.id.startsWith('deadline-') || n.id.startsWith('task-remind-'))
         .map((n) => n.id);
       for (const dId of dynamicIds) {
         await pool.query(

@@ -11,12 +11,22 @@ export type Course = {
 
 export type Assignment = {
   id: string;
-  courseId: string;
+  courseId?: string | null;
   title: string;
   description: string;
   dueDate: string;
   status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
+  dueTime?: string | null;
+  reminder?: string | null;
+  priority?: 'low' | 'medium' | 'high' | 'urgent';
+  source?: string;
+  sourceId?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  completedAt?: string | null;
 };
+
+export type Task = Assignment;
 
 export type ItemType = 'HACKATHON' | 'WORKSHOP' | 'EVENT' | 'ANNOUNCEMENT' | 'DEADLINE';
 
@@ -34,7 +44,7 @@ export type CampusItem = {
   organizer: string | null;
   importantActions: string[];
   sourceText: string;
-  sourceType?: 'notice' | 'personal';
+  sourceType?: 'notice' | 'personal' | 'email';
 };
 
 
@@ -44,7 +54,14 @@ export interface GmailSyncStats {
   skipped: number;
   processed: number;
   failed?: number;
+  emailsPersisted?: number;
+  analysesFailed?: number;
   noticesCreated?: number;
+  pendingNoticesCount?: number;
+  relevantAcademicMessages?: number;
+  ignoredMessages?: number;
+  deadlineCandidatesGenerated?: number;
+  tasksGenerated?: number;
 }
 
 
@@ -104,6 +121,7 @@ export interface NoticeCandidate {
     messageId: string;
     sender: string;
     subject: string;
+    receivedAt?: string | null;
   };
 }
 
@@ -131,9 +149,13 @@ export interface Notice {
   sourceSender?: string | null;
   sourceSubject?: string | null;
   status: NoticeStatus;
+  isConverted?: boolean;
+  convertedToTaskId?: string | null;
+  convertedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   publishedAt?: string | null;
+  sourceReceivedAt?: string | null;
 }
 
 export type NotificationType = 'notice_published' | 'pending_review' | 'deadline_reminder' | 'system';
@@ -163,7 +185,7 @@ export interface CampusEmail {
   receivedAt?: string | null;
   bodyText?: string | null;
   snippet?: string | null;
-  analysisStatus: 'pending' | 'completed' | 'failed' | 'skipped';
+  analysisStatus: 'pending' | 'completed' | 'failed' | 'skipped' | 'ignored_personal';
   analysisError?: string | null;
   category?: string | null;
   audience?: string | null;

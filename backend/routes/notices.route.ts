@@ -1,14 +1,16 @@
 import { Router } from 'express';
-import { getAuth, requireAuth } from '@clerk/express';
+import { getAuth } from '@clerk/express';
 import {
   isReviewer,
   requireReviewerMiddleware,
+  requireAuth,
 } from '../middleware/requireAuth.js';
 import {
   noticesService,
   DuplicateNoticeError,
   InvalidNoticeStateTransitionError,
   NoticeNotFoundError,
+  UnauthorizedNoticeAccessError,
 } from '../services/notices.service.js';
 import { NoticeValidationError } from '../services/noticeValidator.js';
 import { GmailNotConnectedError } from '../services/gmail.service.js';
@@ -32,6 +34,7 @@ router.get('/', requireAuth(), async (req, res) => {
 
     const notices = await noticesService.getAll({
       isReviewer: reviewer,
+      userId: auth.userId,
       status: typeof status === 'string' ? (status as NoticeStatus) : undefined,
       category: typeof category === 'string' ? (category as NoticeCategory) : undefined,
       priority: typeof priority === 'string' ? (priority as NoticePriority) : undefined,
@@ -62,7 +65,7 @@ router.get('/:id', requireAuth(), async (req, res) => {
 
   try {
     const reviewer = isReviewer(req);
-    const notice = await noticesService.getById(id, reviewer);
+    const notice = await noticesService.getById(id, reviewer, auth.userId);
 
     if (!notice) {
       return res.status(404).json({ error: 'Notice not found' });
@@ -72,6 +75,36 @@ router.get('/:id', requireAuth(), async (req, res) => {
   } catch (error) {
     console.error('Failed to get notice:', error);
     return res.status(500).json({ error: 'Failed to get notice' });
+  }
+});
+
+/**
+ * Convert notice to task
+ * POST /api/notices/:id/convert-to-task
+ */
+router.post('/:id/convert-to-task', requireAuth(), async (req, res) => {
+  const auth = getAuth(req);
+  if (!auth?.userId) {
+    return res.status(401).json({ error: 'Unauthenticated' });
+  }
+
+  const { id } = req.params;
+  if (!id || typeof id !== 'string') {
+    return res.status(400).json({ error: 'Invalid notice ID' });
+  }
+
+  try {
+    const result = await noticesService.convertToTask(auth.userId, id, req.body);
+    return res.status(result.alreadyConverted ? 200 : 201).json(result);
+  } catch (error) {
+    if (error instanceof NoticeNotFoundError) {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error instanceof UnauthorizedNoticeAccessError) {
+      return res.status(403).json({ error: error.message });
+    }
+    console.error('Failed to convert notice to task:', error);
+    return res.status(500).json({ error: 'Failed to convert notice to task' });
   }
 });
 
@@ -192,7 +225,12 @@ router.patch('/:id', requireReviewerMiddleware, async (req, res) => {
  * POST /api/notices/:id/approve
  */
 router.post('/:id/approve', requireReviewerMiddleware, async (req, res) => {
-  const { id } = req.params;
+  const rawId = req.params.id;
+  const id = Array.isArray(rawId) ? rawId[0] : rawId;
+  if (!id || typeof id !== 'string') {
+    return res.status(400).json({ error: 'Invalid notice ID' });
+  }
+
   try {
     const notice = await noticesService.approve(id);
     return res.json(notice);
@@ -213,7 +251,12 @@ router.post('/:id/approve', requireReviewerMiddleware, async (req, res) => {
  * POST /api/notices/:id/publish
  */
 router.post('/:id/publish', requireReviewerMiddleware, async (req, res) => {
-  const { id } = req.params;
+  const rawId = req.params.id;
+  const id = Array.isArray(rawId) ? rawId[0] : rawId;
+  if (!id || typeof id !== 'string') {
+    return res.status(400).json({ error: 'Invalid notice ID' });
+  }
+
   try {
     const notice = await noticesService.publish(id);
     return res.json(notice);
@@ -234,7 +277,12 @@ router.post('/:id/publish', requireReviewerMiddleware, async (req, res) => {
  * POST /api/notices/:id/reject
  */
 router.post('/:id/reject', requireReviewerMiddleware, async (req, res) => {
-  const { id } = req.params;
+  const rawId = req.params.id;
+  const id = Array.isArray(rawId) ? rawId[0] : rawId;
+  if (!id || typeof id !== 'string') {
+    return res.status(400).json({ error: 'Invalid notice ID' });
+  }
+
   try {
     const notice = await noticesService.reject(id);
     return res.json(notice);
@@ -255,7 +303,12 @@ router.post('/:id/reject', requireReviewerMiddleware, async (req, res) => {
  * POST /api/notices/:id/archive
  */
 router.post('/:id/archive', requireReviewerMiddleware, async (req, res) => {
-  const { id } = req.params;
+  const rawId = req.params.id;
+  const id = Array.isArray(rawId) ? rawId[0] : rawId;
+  if (!id || typeof id !== 'string') {
+    return res.status(400).json({ error: 'Invalid notice ID' });
+  }
+
   try {
     const notice = await noticesService.archive(id);
     return res.json(notice);
@@ -276,7 +329,12 @@ router.post('/:id/archive', requireReviewerMiddleware, async (req, res) => {
  * DELETE /api/notices/:id
  */
 router.delete('/:id', requireReviewerMiddleware, async (req, res) => {
-  const { id } = req.params;
+  const rawId = req.params.id;
+  const id = Array.isArray(rawId) ? rawId[0] : rawId;
+  if (!id || typeof id !== 'string') {
+    return res.status(400).json({ error: 'Invalid notice ID' });
+  }
+
   try {
     const deleted = await noticesService.delete(id);
     if (!deleted) {

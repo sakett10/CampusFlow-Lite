@@ -1,15 +1,22 @@
 import { pool } from '../db.js';
 import { randomUUID } from 'node:crypto';
-
 import type { Assignment } from '../types.js';
 
-const mapRowToAssignment = (row: Record<string, unknown>): Assignment => ({
+export const mapRowToAssignment = (row: Record<string, unknown>): Assignment => ({
   id: row.id as string,
-  courseId: row.course_id as string,
+  courseId: (row.course_id as string) || null,
   title: row.title as string,
-  description: row.description as string,
-  dueDate: row.due_date as string,
+  description: (row.description as string) || '',
+  dueDate: (row.due_date as string) || '',
   status: row.status as 'PENDING' | 'IN_PROGRESS' | 'COMPLETED',
+  dueTime: (row.due_time as string) || null,
+  reminder: (row.reminder as string) || null,
+  priority: (row.priority as 'low' | 'medium' | 'high' | 'urgent') || 'medium',
+  source: (row.source as string) || 'manual',
+  sourceId: (row.source_id as string) || null,
+  createdAt: row.created_at ? new Date(row.created_at as string).toISOString() : undefined,
+  updatedAt: row.updated_at ? new Date(row.updated_at as string).toISOString() : undefined,
+  completedAt: row.completed_at ? new Date(row.completed_at as string).toISOString() : null,
 });
 
 export class CourseNotFoundError extends Error {
@@ -27,6 +34,16 @@ export const assignmentsService = {
     );
 
     return rows.map(mapRowToAssignment);
+  },
+
+  getBySourceId: async (userId: string, sourceId: string): Promise<Assignment | null> => {
+    const { rows } = await pool.query(
+      'SELECT * FROM assignments WHERE user_id = $1 AND source_id = $2 LIMIT 1',
+      [userId, sourceId],
+    );
+
+    if (rows.length === 0) return null;
+    return mapRowToAssignment(rows[0]);
   },
 
   add: async (
@@ -53,24 +70,35 @@ export const assignmentsService = {
         title,
         description,
         due_date,
-        status
+        status,
+        due_time,
+        reminder,
+        priority,
+        source,
+        source_id,
+        created_at,
+        updated_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       RETURNING *
     `;
 
     const values = [
       id,
       userId,
-      item.courseId,
+      item.courseId || null,
       item.title,
       item.description || '',
-      item.dueDate,
+      item.dueDate || '',
       item.status || 'PENDING',
+      item.dueTime || null,
+      item.reminder || null,
+      item.priority || 'medium',
+      item.source || 'manual',
+      item.sourceId || null,
     ];
 
     const { rows } = await pool.query(query, values);
-
     return mapRowToAssignment(rows[0]);
   },
 
@@ -103,14 +131,47 @@ export const assignmentsService = {
       values.push(updates.dueDate);
     }
 
+    if (updates.dueTime !== undefined) {
+      fields.push(`due_time = $${idx++}`);
+      values.push(updates.dueTime);
+    }
+
+    if (updates.reminder !== undefined) {
+      fields.push(`reminder = $${idx++}`);
+      values.push(updates.reminder);
+    }
+
+    if (updates.priority !== undefined) {
+      fields.push(`priority = $${idx++}`);
+      values.push(updates.priority);
+    }
+
+    if (updates.source !== undefined) {
+      fields.push(`source = $${idx++}`);
+      values.push(updates.source);
+    }
+
+    if (updates.sourceId !== undefined) {
+      fields.push(`source_id = $${idx++}`);
+      values.push(updates.sourceId);
+    }
+
     if (updates.status !== undefined) {
       fields.push(`status = $${idx++}`);
       values.push(updates.status);
+
+      if (updates.status === 'COMPLETED') {
+        fields.push(`completed_at = CURRENT_TIMESTAMP`);
+      } else {
+        fields.push(`completed_at = NULL`);
+      }
     }
 
     if (fields.length === 0) {
       return null;
     }
+
+    fields.push(`updated_at = CURRENT_TIMESTAMP`);
 
     values.push(id);
     const idIndex = idx++;
@@ -120,7 +181,7 @@ export const assignmentsService = {
 
     let courseOwnershipClause = '';
 
-    if (updates.courseId !== undefined) {
+    if (updates.courseId !== undefined && updates.courseId !== null) {
       values.push(updates.courseId);
       const courseIdIndex = idx;
 

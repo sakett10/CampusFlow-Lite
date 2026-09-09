@@ -24,7 +24,7 @@ export const campusApi = {
     return res.json();
   },
 
-  delete: async (token: string, id: string, sourceType?: 'notice' | 'personal'): Promise<void> => {
+  delete: async (token: string, id: string, sourceType?: 'notice' | 'personal' | 'email'): Promise<void> => {
     const endpoint = sourceType === 'notice' ? `/api/notices/${id}` : `/api/campus-items/${id}`;
     const headers: Record<string, string> = {
       Authorization: `Bearer ${token}`,

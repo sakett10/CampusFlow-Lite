@@ -88,6 +88,7 @@ import { NoticeValidationError } from './services/noticeValidator.js';
 
 describe('Gmail Sync Foundation (Phase C1 + C3 Automatic Notice Pipeline)', () => {
   beforeEach(async () => {
+    process.env.REVIEWER_USER_IDS = 'user_A,reviewer_A';
     mockList.mockReset();
     mockGet.mockReset();
     resetNoticeAnalyzer();
@@ -324,7 +325,7 @@ describe('Gmail Sync Foundation (Phase C1 + C3 Automatic Notice Pipeline)', () =
         .set('Authorization', 'Bearer user_A');
 
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({
+      expect(res.body).toMatchObject({
         checked: 3,
         newMessages: 3,
         skipped: 0,

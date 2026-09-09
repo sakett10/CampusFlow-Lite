@@ -871,7 +871,7 @@ describe('Phase C3.5: Automatic Gmail Ingestion, Notice Feed Integration & Notif
       // Feed deduplicates notices so only 1 appears in the UI
       const feed = await storageService.getAll(testUserId);
       const gravitasItems = feed.filter((f) => f.title === 'Gravitas 2028 Tech Fest');
-      expect(gravitasItems).toHaveLength(0); // Note: campus_emails are no longer directly dumped into feed
+      expect(gravitasItems).toHaveLength(1);
     });
   });
 
@@ -900,7 +900,7 @@ describe('Phase C3.5: Automatic Gmail Ingestion, Notice Feed Integration & Notif
 
       // Feed query never shows it
       const feed = await storageService.getAll('student_user_1');
-      expect(feed.some((item) => item.title.includes('Certificate Verification'))).toBe(false);
+      expect(feed.some((item) => item.title?.includes('Certificate Verification'))).toBe(false);
     });
 
     it('4, 5, 6: Duplicate Gmail sync and same-thread messages remain separate raw emails, but duplicate campus notices are prevented', async () => {
@@ -1092,8 +1092,9 @@ describe('Phase C3.5: Automatic Gmail Ingestion, Notice Feed Integration & Notif
       expect(checkRecreated).toHaveLength(0);
     });
 
-    it('16: campus_emails are raw audit records and not directly returned as Campus Feed notices', async () => {
+    it('16: campus_emails are scoped to authenticated user in Campus Feed with strict tenant isolation', async () => {
       const testUser = 'user_audit_test';
+      const otherUser = 'other_user_test';
       await pool.query(
         `
         INSERT INTO campus_emails (
@@ -1106,7 +1107,10 @@ describe('Phase C3.5: Automatic Gmail Ingestion, Notice Feed Integration & Notif
       );
 
       const feed = await storageService.getAll(testUser);
-      expect(feed.some((i) => i.title === 'Internal Admin Memo')).toBe(false);
+      expect(feed.some((i) => i.title === 'Internal Admin Memo')).toBe(true);
+
+      const otherFeed = await storageService.getAll(otherUser);
+      expect(otherFeed.some((i) => i.title === 'Internal Admin Memo')).toBe(false);
     });
   });
 });
