@@ -34,6 +34,7 @@ vi.mock('@clerk/express', () => {
 });
 
 import app from './index.js';
+import { pool } from './db.js';
 import {
   calculateReminderTriggerTime,
   isTaskOverdue,
@@ -43,7 +44,16 @@ import {
 describe('Task System & Lifecycle', () => {
   let createdTaskId: string;
 
+  const mockNoticeId = '11111111-1111-1111-1111-111111111111';
+
   beforeEach(async () => {
+    await pool.query(
+      `INSERT INTO notices (id, created_by_user_id, title, summary, category, priority, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (id) DO NOTHING`,
+      [mockNoticeId, 'user_A', 'Scholarship Renewal Notice', 'Renewal documents required', 'scholarship', 'urgent', 'published'],
+    );
+
     // Create a standalone task without any course attached
     const res = await request(app)
       .post('/api/assignments')
@@ -56,7 +66,7 @@ describe('Task System & Lifecycle', () => {
         priority: 'urgent',
         reminder: '1d_before',
         source: 'notice',
-        sourceId: 'notice_456',
+        sourceId: mockNoticeId,
       });
 
     expect(res.status).toBe(201);
@@ -78,7 +88,7 @@ describe('Task System & Lifecycle', () => {
     expect(task.priority).toBe('urgent');
     expect(task.reminder).toBe('1d_before');
     expect(task.source).toBe('notice');
-    expect(task.sourceId).toBe('notice_456');
+    expect(task.sourceId).toBe(mockNoticeId);
     expect(task.courseId).toBeNull();
     expect(task.status).toBe('PENDING');
     expect(task.completedAt).toBeNull();

@@ -15,12 +15,22 @@ import { clerkAuth, requireAuthMiddleware } from './middleware/requireAuth.js';
 
 const app = express();
 
-const allowedOrigins = [
-  process.env.FRONTEND_URL,
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'http://localhost:4173',
-].filter(Boolean) as string[];
+const envOrigins = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+const allowedOrigins = Array.from(
+  new Set(
+    [
+      process.env.FRONTEND_URL,
+      ...envOrigins,
+      'http://localhost:5173',
+      'http://localhost:3000',
+      'http://localhost:4173',
+    ].filter(Boolean) as string[],
+  ),
+);
 
 app.use(
   cors({
@@ -28,8 +38,7 @@ app.use(
       if (
         !origin ||
         process.env.NODE_ENV === 'test' ||
-        allowedOrigins.includes(origin) ||
-        origin.endsWith('.vercel.app')
+        allowedOrigins.includes(origin)
       ) {
         return callback(null, true);
       }

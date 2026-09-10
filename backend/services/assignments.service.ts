@@ -1,6 +1,7 @@
 import { pool } from '../db.js';
 import { randomUUID } from 'node:crypto';
 import type { Assignment } from '../types.js';
+import { noticesService } from './notices.service.js';
 
 export const mapRowToAssignment = (row: Record<string, unknown>): Assignment => ({
   id: row.id as string,
@@ -23,6 +24,20 @@ export class CourseNotFoundError extends Error {
   constructor(message = 'Course not found or access denied') {
     super(message);
     this.name = 'CourseNotFoundError';
+  }
+}
+
+export class UnauthorizedSourceEmailError extends Error {
+  constructor(message = 'Source email not found or access denied') {
+    super(message);
+    this.name = 'UnauthorizedSourceEmailError';
+  }
+}
+
+export class UnauthorizedNoticeAccessError extends Error {
+  constructor(message = 'Notice not found or access denied') {
+    super(message);
+    this.name = 'UnauthorizedNoticeAccessError';
   }
 }
 
@@ -57,6 +72,29 @@ export const assignmentsService = {
       );
       if (courseCheck.rows.length === 0) {
         throw new CourseNotFoundError();
+      }
+    }
+
+    if (item.source === 'gmail' || item.source === 'email') {
+      if (!item.sourceId) {
+        throw new UnauthorizedSourceEmailError('Source email ID is required');
+      }
+      const emailCheck = await pool.query(
+        'SELECT id FROM campus_emails WHERE user_id = $1 AND (source_message_id = $2 OR id::text = $2) LIMIT 1',
+        [userId, item.sourceId],
+      );
+      if (emailCheck.rows.length === 0) {
+        throw new UnauthorizedSourceEmailError();
+      }
+    }
+
+    if (item.source === 'notice') {
+      if (!item.sourceId) {
+        throw new UnauthorizedNoticeAccessError('Notice ID is required');
+      }
+      const notice = await noticesService.getById(item.sourceId, false, userId);
+      if (!notice) {
+        throw new UnauthorizedNoticeAccessError();
       }
     }
 
@@ -107,6 +145,48 @@ export const assignmentsService = {
     id: string,
     updates: Partial<Assignment>,
   ): Promise<Assignment | null> => {
+    // 1. Load the existing assignment owned by the authenticated user
+    const { rows: existingRows } = await pool.query(
+      'SELECT * FROM assignments WHERE id = $1 AND user_id = $2',
+      [id, userId],
+    );
+    if (existingRows.length === 0) {
+      return null;
+    }
+    const existing = mapRowToAssignment(existingRows[0]);
+
+    // 2. Merge existing source/sourceId with incoming fields
+    const effectiveSource = updates.source !== undefined ? updates.source : existing.source;
+    const effectiveSourceId = updates.sourceId !== undefined ? updates.sourceId : existing.sourceId;
+
+    // 3. Determine if source/sourceId are changed
+    const sourceChanged = updates.source !== undefined && updates.source !== existing.source;
+    const sourceIdChanged = updates.sourceId !== undefined && updates.sourceId !== existing.sourceId;
+
+    // 4. Validate effective source/sourceId pair BEFORE writing changes if either changed
+    if (sourceChanged || sourceIdChanged) {
+      if (effectiveSource === 'gmail' || effectiveSource === 'email') {
+        if (!effectiveSourceId) {
+          throw new UnauthorizedSourceEmailError('Source email ID is required');
+        }
+        const emailCheck = await pool.query(
+          'SELECT id FROM campus_emails WHERE user_id = $1 AND (source_message_id = $2 OR id::text = $2) LIMIT 1',
+          [userId, effectiveSourceId],
+        );
+        if (emailCheck.rows.length === 0) {
+          throw new UnauthorizedSourceEmailError();
+        }
+      } else if (effectiveSource === 'notice') {
+        if (!effectiveSourceId) {
+          throw new UnauthorizedNoticeAccessError('Notice ID is required');
+        }
+        const notice = await noticesService.getById(effectiveSourceId, false, userId);
+        if (!notice) {
+          throw new UnauthorizedNoticeAccessError();
+        }
+      }
+    }
+
     const fields: string[] = [];
     const values: unknown[] = [];
     let idx = 1;

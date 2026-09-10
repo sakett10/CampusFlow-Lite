@@ -368,6 +368,7 @@ export async function reclassifyExistingCampusEmails(userId: string): Promise<{
     if (!classification.isAcademic) {
       if (email.analysisStatus !== 'ignored_personal') {
         await campusEmailsService.markIgnoredPersonal(
+          userId,
           email.sourceAccountEmail,
           email.sourceMessageId,
           classification.reason,
@@ -405,6 +406,7 @@ export async function reclassifyExistingCampusEmails(userId: string): Promise<{
           });
           candidateObj = validated;
           await campusEmailsService.updateAnalysisSuccess(
+            userId,
             email.sourceAccountEmail,
             email.sourceMessageId,
             validated,
@@ -503,14 +505,17 @@ export const syncGmailMessagesForUser = async (
     },
   );
 
-  // Fetch messages with pagination support up to batchSize / historical query
+  // Fetch messages with pagination support strictly bounded by batchSize / historical query
   const rawMessages: Array<{ id?: string | null; threadId?: string | null }> = [];
   let pageToken: string | undefined = undefined;
   const q = options?.query || (options?.syncHistorical ? 'after:2026/07/31' : undefined);
-  const maxFetchLimit = options?.syncHistorical ? 100 : Math.max(batchSize * 2, 50);
+  const targetLimit = options?.syncHistorical ? Math.max(batchSize, 100) : batchSize;
 
   do {
-    const pageSize = Math.min(batchSize - rawMessages.length > 0 ? batchSize - rawMessages.length : batchSize, 50);
+    const remaining = targetLimit - rawMessages.length;
+    if (remaining <= 0) break;
+    const pageSize = Math.min(remaining, 50);
+
     try {
       const listParams: {
         userId: string;
@@ -532,6 +537,7 @@ export const syncGmailMessagesForUser = async (
       };
 
       const pageMessages = listResponse.data.messages || [];
+      if (pageMessages.length === 0) break;
       rawMessages.push(...pageMessages);
       pageToken = listResponse.data.nextPageToken || undefined;
     } catch (apiErr: unknown) {
@@ -541,7 +547,7 @@ export const syncGmailMessagesForUser = async (
       }
       throw apiErr;
     }
-  } while (pageToken && rawMessages.length < maxFetchLimit);
+  } while (pageToken && rawMessages.length < targetLimit);
 
   let checked = 0;
   let newMessages = 0;
@@ -569,8 +575,8 @@ export const syncGmailMessagesForUser = async (
       continue;
     }
 
-    // Check if email already exists in campus_emails
-    const existingEmail = await campusEmailsService.getBySourceMessageId(conn.google_email, rawMsg.id);
+    // Check if email already exists in campus_emails for this user
+    const existingEmail = await campusEmailsService.getBySourceMessageId(userId, conn.google_email, rawMsg.id);
     if (existingEmail && (existingEmail.analysisStatus === 'completed' || existingEmail.analysisStatus === 'ignored_personal')) {
       await markGmailMessageAsProcessed(userId, rawMsg.id);
       skipped++;
@@ -614,6 +620,7 @@ export const syncGmailMessagesForUser = async (
           snippet: parsedDetails.snippet,
         });
         await campusEmailsService.markIgnoredPersonal(
+          userId,
           conn.google_email,
           rawMsg.id,
           classification.reason,
@@ -644,7 +651,7 @@ export const syncGmailMessagesForUser = async (
       try {
         const structuredMessage = toStructuredGmailMessage(parsedDetails);
         const candidate = await noticeAnalyzerService.analyze(structuredMessage);
-        await campusEmailsService.updateAnalysisSuccess(conn.google_email, rawMsg.id, candidate);
+        await campusEmailsService.updateAnalysisSuccess(userId, conn.google_email, rawMsg.id, candidate);
 
         // Track student deadline candidate (tasks are NOT auto-created on sync)
         const taskInfo = extractDeadlineAndTask(candidate, parsedDetails);
@@ -690,6 +697,7 @@ export const syncGmailMessagesForUser = async (
       } catch (analysisErr) {
         if (analysisErr instanceof NoticeValidationError) {
           await campusEmailsService.updateAnalysisFailure(
+            userId,
             conn.google_email,
             rawMsg.id,
             'Non-notice email',
@@ -700,6 +708,7 @@ export const syncGmailMessagesForUser = async (
             analysisErr instanceof Error ? analysisErr.message : String(analysisErr),
           );
           await campusEmailsService.updateAnalysisFailure(
+            userId,
             conn.google_email,
             rawMsg.id,
             analysisErr instanceof Error ? analysisErr.message : 'AI analysis failed',

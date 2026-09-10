@@ -29,24 +29,15 @@ function isPersonalCertificateEmail(row: {
   const sub = (row.subject || '').toLowerCase();
   const sum = (row.summary || '').toLowerCase();
   const aud = (row.audience || '').toLowerCase();
-  const cat = (row.category || '').toLowerCase();
 
   return (
-    sub.includes('certificate verification') ||
-    sub.includes('fresher - certificate') ||
-    sum.includes('certificate verification') ||
-    sum.includes('fresher - certificate') ||
-    sub.includes('missing document') ||
-    sum.includes('missing document') ||
+    sub.includes('fresher - certificate verification') ||
+    sum.includes('fresher - certificate verification') ||
+    sub.includes('missing 12th mark list') ||
+    sum.includes('missing 12th mark list') ||
     sub.includes('candidate [') ||
     sum.includes('candidate [') ||
-    sub.includes('physical fitness') ||
-    sum.includes('physical fitness') ||
-    sub.includes('provisional admission') ||
-    sum.includes('provisional admission') ||
-    aud.includes('individual') ||
-    aud.includes('candidate') ||
-    cat === 'admission'
+    aud.includes('individual student')
   );
 }
 

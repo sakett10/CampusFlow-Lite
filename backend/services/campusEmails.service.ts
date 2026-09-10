@@ -64,6 +64,7 @@ export const campusEmailsService = {
   },
 
   updateAnalysisSuccess: async (
+    userId: string,
     sourceAccountEmail: string,
     sourceMessageId: string,
     candidate: NoticeCandidate,
@@ -103,7 +104,7 @@ export const campusEmailsService = {
         links = $10,
         documents = $11,
         updated_at = CURRENT_TIMESTAMP
-      WHERE source_account_email = $12 AND source_message_id = $13
+      WHERE user_id = $12 AND source_account_email = $13 AND source_message_id = $14
       RETURNING *
     `;
 
@@ -119,6 +120,7 @@ export const campusEmailsService = {
       JSON.stringify(actions),
       JSON.stringify(candidate.links || []),
       JSON.stringify(candidate.documents || []),
+      userId,
       sourceAccountEmail,
       sourceMessageId,
     ];
@@ -129,6 +131,7 @@ export const campusEmailsService = {
   },
 
   updateAnalysisFailure: async (
+    userId: string,
     sourceAccountEmail: string,
     sourceMessageId: string,
     errorMessage: string,
@@ -139,16 +142,17 @@ export const campusEmailsService = {
         analysis_status = 'failed',
         analysis_error = $1,
         updated_at = CURRENT_TIMESTAMP
-      WHERE source_account_email = $2 AND source_message_id = $3
+      WHERE user_id = $2 AND source_account_email = $3 AND source_message_id = $4
       RETURNING *
     `;
 
-    const { rows } = await pool.query(query, [errorMessage, sourceAccountEmail, sourceMessageId]);
+    const { rows } = await pool.query(query, [errorMessage, userId, sourceAccountEmail, sourceMessageId]);
     if (rows.length === 0) return null;
     return mapRowToCampusEmail(rows[0]);
   },
 
   markIgnoredPersonal: async (
+    userId: string,
     sourceAccountEmail: string,
     sourceMessageId: string,
     reason: string,
@@ -159,11 +163,11 @@ export const campusEmailsService = {
         analysis_status = 'ignored_personal',
         analysis_error = $1,
         updated_at = CURRENT_TIMESTAMP
-      WHERE source_account_email = $2 AND source_message_id = $3
+      WHERE user_id = $2 AND source_account_email = $3 AND source_message_id = $4
       RETURNING *
     `;
 
-    const { rows } = await pool.query(query, [reason, sourceAccountEmail, sourceMessageId]);
+    const { rows } = await pool.query(query, [reason, userId, sourceAccountEmail, sourceMessageId]);
     if (rows.length === 0) return null;
     return mapRowToCampusEmail(rows[0]);
   },
@@ -182,16 +186,17 @@ export const campusEmailsService = {
   },
 
   getBySourceMessageId: async (
+    userId: string,
     sourceAccountEmail: string,
     sourceMessageId: string,
   ): Promise<CampusEmail | null> => {
     const { rows } = await pool.query(
       `
       SELECT * FROM campus_emails
-      WHERE source_account_email = $1 AND source_message_id = $2
+      WHERE user_id = $1 AND source_account_email = $2 AND source_message_id = $3
       LIMIT 1
       `,
-      [sourceAccountEmail, sourceMessageId],
+      [userId, sourceAccountEmail, sourceMessageId],
     );
 
     if (rows.length === 0) return null;

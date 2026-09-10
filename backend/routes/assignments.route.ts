@@ -1,5 +1,10 @@
 import { Router } from 'express';
-import { assignmentsService, CourseNotFoundError } from '../services/assignments.service.js';
+import {
+  assignmentsService,
+  CourseNotFoundError,
+  UnauthorizedSourceEmailError,
+  UnauthorizedNoticeAccessError,
+} from '../services/assignments.service.js';
 import { getAuth } from '@clerk/express';
 
 const router = Router();
@@ -29,6 +34,12 @@ router.post('/', async (req, res) => {
     if (error instanceof CourseNotFoundError) {
       return res.status(404).json({ error: error.message });
     }
+    if (
+      error instanceof UnauthorizedSourceEmailError ||
+      error instanceof UnauthorizedNoticeAccessError
+    ) {
+      return res.status(403).json({ error: error.message });
+    }
     console.error('Failed to create assignment:', error);
     res.status(500).json({ error: 'Failed to create assignment' });
   }
@@ -47,6 +58,12 @@ router.put('/:id', async (req, res) => {
       res.json(item);
     }
   } catch (error) {
+    if (
+      error instanceof UnauthorizedSourceEmailError ||
+      error instanceof UnauthorizedNoticeAccessError
+    ) {
+      return res.status(403).json({ error: error.message });
+    }
     console.error('Failed to update assignment:', error);
     res.status(500).json({ error: 'Failed to update assignment' });
   }

@@ -208,14 +208,28 @@ export const notificationsService = {
       });
 
     // 2. Compute dynamic deadline reminders for published notices with real dates
+    // Must strictly apply the same source_account_email / creator visibility rules as noticesService.getAll/getById
     const dynamicReminders: AppNotification[] = [];
     try {
+      const reviewerIds = (process.env.REVIEWER_USER_IDS || '').split(',').map((s) => s.trim()).filter(Boolean);
+      const adminIds = (process.env.ADMIN_USER_IDS || '').split(',').map((s) => s.trim()).filter(Boolean);
+      const isNonProd = process.env.NODE_ENV !== 'production';
+      const authorizedReviewers = Array.from(new Set(['admin', ...reviewerIds, ...adminIds]));
+
       const { rows: publishedRows } = await pool.query(
         `
         SELECT id, title, important_dates
         FROM notices
-        WHERE status = 'published' AND important_dates IS NOT NULL
+        WHERE status = 'published'
+          AND important_dates IS NOT NULL
+          AND (
+            source_account_email IS NULL
+            OR created_by_user_id = ANY($1::text[])
+            OR ($2 AND created_by_user_id LIKE 'reviewer%')
+            OR created_by_user_id = $3
+          )
         `,
+        [authorizedReviewers, isNonProd, userId],
       );
 
       const now = new Date();

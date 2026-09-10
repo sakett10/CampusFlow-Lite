@@ -18,13 +18,15 @@ export const requireAuth = () => requireAuthMiddleware;
 
 export function isReviewerUserId(userId: string): boolean {
   if (!userId) return false;
-  if (userId === 'admin' || userId.startsWith('reviewer')) {
-    return true;
-  }
   const reviewerIds = (process.env.REVIEWER_USER_IDS || '').split(',').map((s) => s.trim()).filter(Boolean);
   const adminIds = (process.env.ADMIN_USER_IDS || '').split(',').map((s) => s.trim()).filter(Boolean);
   if (reviewerIds.includes(userId) || adminIds.includes(userId)) {
     return true;
+  }
+  if (process.env.NODE_ENV !== 'production') {
+    if (userId === 'admin' || userId.startsWith('reviewer')) {
+      return true;
+    }
   }
   return false;
 }

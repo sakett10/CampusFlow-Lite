@@ -113,10 +113,11 @@ const PERSONAL_CONVERSATION_PATTERNS = [
 ];
 
 // 5. Strong academic authority signals in sender
-const ACADEMIC_SENDER_SIGNALS = [
+const ACADEMIC_SENDER_SHORT_REGEX = /\b(hod|cdc|smec|site|score|sense|select)\b/i;
+
+const ACADEMIC_SENDER_PATTERNS = [
   'dean',
   'director',
-  'hod',
   'head of department',
   'registrar',
   'proctor',
@@ -129,23 +130,22 @@ const ACADEMIC_SENDER_SIGNALS = [
   'periyar evr',
   'central library',
   'vit business school',
-  'smec',
-  'score',
-  'sense',
-  'select',
-  'site',
   'v-space',
   'moodle',
   'canvas',
   'blackboard',
   'vitol',
-  'cdc',
   'placement',
   'pat office',
   'group, vellore campus',
   'group, chennai campus',
   '@vitstudent.ac.in',
   '@vit.ac.in',
+  'counselling',
+  'admissions',
+  'registration',
+  'branch transfer',
+  'academic coordinator',
 ];
 
 // 6. Strong academic topics in subject/content
@@ -168,6 +168,10 @@ const ACADEMIC_TOPIC_SIGNALS = [
   'submission deadline',
   'due date',
   'course registration',
+  'registration',
+  'branch transfer',
+  'counselling',
+  'admissions',
   'add/drop',
   'academic calendar',
   'winter semester',
@@ -189,6 +193,8 @@ const ACADEMIC_TOPIC_SIGNALS = [
   'pat internship',
   'challenge - international student competition',
   'value-added program',
+  'orientation programme',
+  'freshers orientation',
 ];
 
 export function classifyEmail(message: {
@@ -272,7 +278,9 @@ export function classifyEmail(message: {
   }
 
   // Step 5: Check strong academic signals
-  const hasAcademicSender = ACADEMIC_SENDER_SIGNALS.some((sig) => sender.includes(sig));
+  const hasAcademicSender =
+    ACADEMIC_SENDER_SHORT_REGEX.test(sender) ||
+    ACADEMIC_SENDER_PATTERNS.some((sig) => sender.includes(sig));
   const hasAcademicTopic = ACADEMIC_TOPIC_SIGNALS.some((topic) => subject.includes(topic) || text.includes(topic));
 
   if (hasAcademicSender && hasAcademicTopic) {
@@ -289,6 +297,8 @@ export function classifyEmail(message: {
       category = 'event';
     } else if (subject.includes('internship') || subject.includes('cdc') || subject.includes('placement')) {
       category = 'placement';
+    } else if (subject.includes('admission') || subject.includes('counselling') || subject.includes('branch transfer')) {
+      category = 'admission';
     }
 
     return {

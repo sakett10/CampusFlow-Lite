@@ -11,6 +11,11 @@ export function useGmailAutoSync(intervalMs = 300000, enabled = true) { // 5 min
 
   const { getToken } = useAuth();
   const isSyncingRef = useRef(false);
+  const isConnectedRef = useRef(isConnected);
+
+  useEffect(() => {
+    isConnectedRef.current = isConnected;
+  }, [isConnected]);
 
   const triggerSync = useCallback(async () => {
     if (isSyncingRef.current) return;
@@ -59,6 +64,12 @@ export function useGmailAutoSync(intervalMs = 300000, enabled = true) { // 5 min
     }
   }, [getToken]);
 
+  const triggerSyncRef = useRef(triggerSync);
+
+  useEffect(() => {
+    triggerSyncRef.current = triggerSync;
+  }, [triggerSync]);
+
   useEffect(() => {
     if (!enabled) return;
 
@@ -77,10 +88,10 @@ export function useGmailAutoSync(intervalMs = 300000, enabled = true) { // 5 min
 
         const data = await res.json();
         if (isMounted) {
-          setIsConnected(data.connected);
-          if (data.connected) {
-            // Run background sync
-            triggerSync();
+          const connected = Boolean(data.connected);
+          setIsConnected(connected);
+          if (connected) {
+            triggerSyncRef.current();
           }
         }
       } catch {
@@ -91,8 +102,8 @@ export function useGmailAutoSync(intervalMs = 300000, enabled = true) { // 5 min
     checkStatusAndInitialSync();
 
     const interval = setInterval(() => {
-      if (isConnected) {
-        triggerSync();
+      if (isConnectedRef.current) {
+        triggerSyncRef.current();
       }
     }, intervalMs);
 
@@ -100,7 +111,7 @@ export function useGmailAutoSync(intervalMs = 300000, enabled = true) { // 5 min
       isMounted = false;
       clearInterval(interval);
     };
-  }, [getToken, isConnected, intervalMs, triggerSync, enabled]);
+  }, [getToken, intervalMs, enabled]);
 
   return {
     isConnected,

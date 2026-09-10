@@ -5,7 +5,8 @@ import { Loader2 } from 'lucide-react';
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isLoaded, userId } = useAuth();
 
-  const isDemo = typeof window !== 'undefined' && (
+  const isDemoEnabled = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_MODE === 'true';
+  const isDemo = isDemoEnabled && typeof window !== 'undefined' && (
     new URLSearchParams(window.location.search).get('demo') === '1' ||
     window.sessionStorage?.getItem('cf_demo') === '1'
   );

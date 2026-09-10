@@ -54,10 +54,6 @@ export default function AddToTaskModal({
       setError('Task title is required.');
       return;
     }
-    if (!dueDate) {
-      setError('Due date is required.');
-      return;
-    }
 
     setIsSubmitting(true);
     setError(null);
@@ -65,7 +61,7 @@ export default function AddToTaskModal({
       await onConfirm({
         title: title.trim(),
         description: description.trim(),
-        dueDate,
+        dueDate: dueDate || '',
         dueTime: dueTime || null,
         reminder: reminder === 'none' ? null : reminder,
         priority,
@@ -172,14 +168,13 @@ export default function AddToTaskModal({
                 <label className="block text-xs font-semibold text-[var(--cf-text)] mb-1.5">
                   <span className="flex items-center gap-1.5">
                     <Calendar className="h-3.5 w-3.5 text-[var(--cf-text-tertiary)]" />
-                    Due Date *
+                    Due Date (Optional)
                   </span>
                 </label>
                 <Input
                   type="date"
                   value={dueDate}
                   onChange={(e) => setDueDate(e.target.value)}
-                  required
                   className="w-full text-xs"
                 />
               </div>

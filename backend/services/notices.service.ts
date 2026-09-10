@@ -88,22 +88,19 @@ export function isPersonalOrNonNotice(candidate: {
   const title = (candidate.title || '').toLowerCase();
   const summary = (candidate.summary || '').toLowerCase();
   const audience = (candidate.audience || '').toLowerCase();
-  const category = (candidate.category || '').toLowerCase();
 
   const excludedPatterns = [
     'fresher - certificate verification',
     'certificate verification',
     'certificate of physical fitness',
+    'physical fitness certificate',
     'missing 12th mark list',
     'pending document upload',
     'provisional admission letter required',
     'candidate [',
     'candidate verification',
-    'document verification',
+    'personal document verification',
     'upload missing',
-    'provisional admission',
-    'admission document',
-    'verification process',
   ];
 
   for (const pattern of excludedPatterns) {
@@ -112,11 +109,7 @@ export function isPersonalOrNonNotice(candidate: {
     }
   }
 
-  if (audience.includes('individual') || audience.includes('candidate')) {
-    return true;
-  }
-
-  if (category === 'admission') {
+  if (audience.includes('individual') || audience.includes('private')) {
     return true;
   }
 
@@ -155,38 +148,51 @@ const ALLOWED_TRANSITIONS: Record<NoticeStatus, NoticeStatus[]> = {
   archived: [],
 };
 
-const mapRowToNotice = (row: Record<string, unknown>): Notice => ({
-  id: row.id as string,
-  createdByUserId: row.created_by_user_id as string,
-  title: row.title as string,
-  summary: row.summary as string,
-  category: row.category as NoticeCategory,
-  priority: row.priority as NoticePriority,
-  audience: (row.audience as string) || null,
-  importantDates: (row.important_dates as Array<{ label: string; date: string }>) || [],
-  actionRequired: (row.action_required as string) || null,
-  venue: (row.venue as string) || null,
-  links: (row.links as Array<{ label: string; url: string }>) || [],
-  documents: (row.documents as Array<{ label: string; url: string }>) || [],
-  sourceProvider: (row.source_provider as string) || 'gmail',
-  sourceConnectionId: (row.source_connection_id as string) || null,
-  sourceAccountEmail: (row.source_account_email as string) || null,
-  sourceMessageId: (row.source_message_id as string) || null,
-  sourceSender: (row.source_sender as string) || null,
-  sourceSubject: (row.source_subject as string) || null,
-  status: row.status as NoticeStatus,
-  isConverted: Boolean(row.is_converted),
-  convertedToTaskId: (row.converted_to_task_id as string) || null,
-  convertedAt: row.converted_at ? new Date(row.converted_at as string).toISOString() : null,
-  createdAt: row.created_at ? new Date(row.created_at as string).toISOString() : new Date().toISOString(),
-  updatedAt: row.updated_at ? new Date(row.updated_at as string).toISOString() : new Date().toISOString(),
-  publishedAt: row.published_at ? new Date(row.published_at as string).toISOString() : null,
-  sourceReceivedAt: row.source_received_at
-    ? new Date(row.source_received_at as string).toISOString()
-    : row.created_at
-    ? new Date(row.created_at as string).toISOString()
-    : null,
-});
+const mapRowToNotice = (row: Record<string, unknown>, userId?: string): Notice => {
+  const hasUserConversion = row.user_converted_task_id !== undefined;
+  const isConverted = hasUserConversion
+    ? Boolean(row.user_converted_task_id)
+    : (userId ? (row.created_by_user_id === userId && Boolean(row.is_converted)) : Boolean(row.is_converted));
+  const convertedToTaskId = hasUserConversion
+    ? (row.user_converted_task_id as string) || null
+    : (userId ? (row.created_by_user_id === userId ? (row.converted_to_task_id as string) : null) : (row.converted_to_task_id as string) || null);
+  const convertedAt = hasUserConversion
+    ? (row.user_converted_at ? new Date(row.user_converted_at as string).toISOString() : null)
+    : (row.converted_at ? new Date(row.converted_at as string).toISOString() : null);
+
+  return {
+    id: row.id as string,
+    createdByUserId: row.created_by_user_id as string,
+    title: row.title as string,
+    summary: row.summary as string,
+    category: row.category as NoticeCategory,
+    priority: row.priority as NoticePriority,
+    audience: (row.audience as string) || null,
+    importantDates: (row.important_dates as Array<{ label: string; date: string }>) || [],
+    actionRequired: (row.action_required as string) || null,
+    venue: (row.venue as string) || null,
+    links: (row.links as Array<{ label: string; url: string }>) || [],
+    documents: (row.documents as Array<{ label: string; url: string }>) || [],
+    sourceProvider: (row.source_provider as string) || 'gmail',
+    sourceConnectionId: (row.source_connection_id as string) || null,
+    sourceAccountEmail: (row.source_account_email as string) || null,
+    sourceMessageId: (row.source_message_id as string) || null,
+    sourceSender: (row.source_sender as string) || null,
+    sourceSubject: (row.source_subject as string) || null,
+    status: row.status as NoticeStatus,
+    isConverted,
+    convertedToTaskId,
+    convertedAt,
+    createdAt: row.created_at ? new Date(row.created_at as string).toISOString() : new Date().toISOString(),
+    updatedAt: row.updated_at ? new Date(row.updated_at as string).toISOString() : new Date().toISOString(),
+    publishedAt: row.published_at ? new Date(row.published_at as string).toISOString() : null,
+    sourceReceivedAt: row.source_received_at
+      ? new Date(row.source_received_at as string).toISOString()
+      : row.created_at
+      ? new Date(row.created_at as string).toISOString()
+      : null,
+  };
+};
 
 export interface NoticeFilters {
   isReviewer: boolean;
@@ -329,9 +335,11 @@ export const noticesService = {
     const values: unknown[] = [];
     let idx = 1;
 
+    const isNonProd = process.env.NODE_ENV !== 'production';
     const reviewerIds = (process.env.REVIEWER_USER_IDS || '').split(',').map((s) => s.trim()).filter(Boolean);
     const adminIds = (process.env.ADMIN_USER_IDS || '').split(',').map((s) => s.trim()).filter(Boolean);
     const authorizedReviewers = Array.from(new Set(['admin', ...reviewerIds, ...adminIds]));
+    const reviewerPrefixCheck = isNonProd ? "notices.created_by_user_id LIKE 'reviewer%'" : "FALSE";
 
     // Strict account isolation:
     // Any notice with source_account_email set is a Gmail-derived notice.
@@ -341,106 +349,147 @@ export const noticesService = {
       if (filters.userId) {
         if (filters.status) {
           conditions.push(`(
-            (status = $${idx} AND (
-              source_account_email IS NULL OR
-              created_by_user_id = ANY($${idx + 2}::text[]) OR
-              created_by_user_id LIKE 'reviewer%'
+            (notices.status = $${idx} AND (
+              notices.source_account_email IS NULL OR
+              notices.created_by_user_id = ANY($${idx + 2}::text[]) OR
+              ${reviewerPrefixCheck}
             )) OR
-            (created_by_user_id = $${idx + 1} AND status = $${idx})
+            (notices.created_by_user_id = $${idx + 1} AND notices.status = $${idx})
           )`);
           values.push(filters.status, filters.userId, authorizedReviewers);
           idx += 3;
         } else {
           conditions.push(`(
-            (status = 'published' AND (
-              source_account_email IS NULL OR
-              created_by_user_id = ANY($${idx + 1}::text[]) OR
-              created_by_user_id LIKE 'reviewer%'
+            (notices.status = 'published' AND (
+              notices.source_account_email IS NULL OR
+              notices.created_by_user_id = ANY($${idx + 1}::text[]) OR
+              ${reviewerPrefixCheck}
             )) OR
-            (created_by_user_id = $${idx})
+            (notices.created_by_user_id = $${idx})
           )`);
           values.push(filters.userId, authorizedReviewers);
           idx += 2;
         }
       } else {
         conditions.push(`(
-          status = 'published' AND (
-            source_account_email IS NULL OR
-            created_by_user_id = ANY($${idx}::text[]) OR
-            created_by_user_id LIKE 'reviewer%'
+          notices.status = 'published' AND (
+            notices.source_account_email IS NULL OR
+            notices.created_by_user_id = ANY($${idx}::text[]) OR
+            ${reviewerPrefixCheck}
           )
         )`);
         values.push(authorizedReviewers);
         idx++;
         if (filters.status) {
-          conditions.push(`status = $${idx++}`);
+          conditions.push(`notices.status = $${idx++}`);
           values.push(filters.status);
         }
       }
     } else {
       if (filters.userId) {
         conditions.push(`(
-          source_account_email IS NULL OR
-          created_by_user_id = ANY($${idx + 1}::text[]) OR
-          created_by_user_id LIKE 'reviewer%' OR
-          created_by_user_id = $${idx}
+          notices.source_account_email IS NULL OR
+          notices.created_by_user_id = ANY($${idx + 1}::text[]) OR
+          ${reviewerPrefixCheck} OR
+          notices.created_by_user_id = $${idx}
         )`);
         values.push(filters.userId, authorizedReviewers);
         idx += 2;
       } else {
         conditions.push(`(
-          source_account_email IS NULL OR
-          created_by_user_id = ANY($${idx}::text[]) OR
-          created_by_user_id LIKE 'reviewer%'
+          notices.source_account_email IS NULL OR
+          notices.created_by_user_id = ANY($${idx}::text[]) OR
+          ${reviewerPrefixCheck}
         )`);
         values.push(authorizedReviewers);
         idx++;
       }
       if (filters.status) {
-        conditions.push(`status = $${idx++}`);
+        conditions.push(`notices.status = $${idx++}`);
         values.push(filters.status);
       }
     }
 
     if (filters.category) {
-      conditions.push(`category = $${idx++}`);
+      conditions.push(`notices.category = $${idx++}`);
       values.push(filters.category);
     }
 
     if (filters.priority) {
-      conditions.push(`priority = $${idx++}`);
+      conditions.push(`notices.priority = $${idx++}`);
       values.push(filters.priority);
     }
 
     if (filters.search && filters.search.trim()) {
       const term = `%${filters.search.trim()}%`;
       conditions.push(
-        `(title ILIKE $${idx} OR summary ILIKE $${idx} OR venue ILIKE $${idx} OR audience ILIKE $${idx})`,
+        `(notices.title ILIKE $${idx} OR notices.summary ILIKE $${idx} OR notices.venue ILIKE $${idx} OR notices.audience ILIKE $${idx})`,
       );
       values.push(term);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-    const query = `
-      SELECT * FROM notices
-      ${whereClause}
-      ORDER BY COALESCE(source_received_at, published_at, created_at) DESC, created_at DESC
-    `;
+    let query: string;
+    if (filters.userId) {
+      query = `
+        SELECT notices.*,
+               a.id AS user_converted_task_id,
+               a.created_at AS user_converted_at
+        FROM notices
+        LEFT JOIN assignments a
+          ON a.user_id = $${idx}
+         AND a.source = 'notice'
+         AND a.source_id = notices.id::text
+        ${whereClause}
+        ORDER BY COALESCE(notices.source_received_at, notices.published_at, notices.created_at) DESC, notices.created_at DESC
+      `;
+      values.push(filters.userId);
+    } else {
+      query = `
+        SELECT notices.*,
+               NULL AS user_converted_task_id,
+               NULL AS user_converted_at
+        FROM notices
+        ${whereClause}
+        ORDER BY COALESCE(notices.source_received_at, notices.published_at, notices.created_at) DESC, notices.created_at DESC
+      `;
+    }
 
     const { rows } = await pool.query(query, values);
-    return rows.map(mapRowToNotice);
+    return rows.map((r) => mapRowToNotice(r, filters.userId));
   },
 
   getById: async (id: string, isReviewer: boolean, userId?: string): Promise<Notice | null> => {
-    const { rows } = await pool.query('SELECT * FROM notices WHERE id = $1', [id]);
+    let query: string;
+    let values: unknown[];
+
+    if (userId) {
+      query = `
+        SELECT notices.*,
+               a.id AS user_converted_task_id,
+               a.created_at AS user_converted_at
+        FROM notices
+        LEFT JOIN assignments a
+          ON a.user_id = $2
+         AND a.source = 'notice'
+         AND a.source_id = notices.id::text
+        WHERE notices.id::text = $1
+      `;
+      values = [id, userId];
+    } else {
+      query = 'SELECT * FROM notices WHERE id::text = $1';
+      values = [id];
+    }
+
+    const { rows } = await pool.query(query, values);
     if (rows.length === 0) return null;
 
-    const notice = mapRowToNotice(rows[0]);
+    const notice = mapRowToNotice(rows[0], userId);
+    const isNonProd = process.env.NODE_ENV !== 'production';
     const isOwner = Boolean(userId && notice.createdByUserId === userId);
     const isCampusNotice =
       isReviewerUserId(notice.createdByUserId) ||
-      notice.createdByUserId === 'admin' ||
-      notice.createdByUserId.startsWith('reviewer') ||
+      (isNonProd && (notice.createdByUserId === 'admin' || notice.createdByUserId.startsWith('reviewer'))) ||
       !notice.sourceAccountEmail;
 
     // Strict account isolation: Gmail-derived notices are strictly private to their owner unless institutional
@@ -723,7 +772,7 @@ export const noticesService = {
 
       // 1. Fetch notice FOR UPDATE to ensure isolation and prevent race conditions
       const { rows: noticeRows } = await client.query(
-        'SELECT * FROM notices WHERE id = $1 FOR UPDATE',
+        'SELECT * FROM notices WHERE id::text = $1 FOR UPDATE',
         [noticeId],
       );
 
@@ -735,12 +784,12 @@ export const noticesService = {
       const notice = mapRowToNotice(rawNotice);
 
       // 2. Authorization: student can convert their own notice OR an official published campus notice
+      const isNonProd = process.env.NODE_ENV !== 'production';
       const isOwner = notice.createdByUserId === userId;
       const isCampusNotice =
         notice.status === 'published' &&
         (isReviewerUserId(notice.createdByUserId) ||
-          notice.createdByUserId === 'admin' ||
-          notice.createdByUserId.startsWith('reviewer') ||
+          (isNonProd && (notice.createdByUserId === 'admin' || notice.createdByUserId.startsWith('reviewer'))) ||
           !notice.sourceAccountEmail);
 
       if (!isOwner && !isCampusNotice) {
@@ -750,31 +799,11 @@ export const noticesService = {
       }
 
       // 3. Check if already converted for this user (prevent duplicate tasks)
-      if (rawNotice.is_converted && rawNotice.converted_to_task_id) {
-        const { rows: existingTaskRows } = await client.query(
-          'SELECT * FROM assignments WHERE id = $1 AND user_id = $2 LIMIT 1',
-          [rawNotice.converted_to_task_id, userId],
-        );
-        if (existingTaskRows.length > 0) {
-          await client.query('COMMIT');
-          return {
-            task: mapRowToAssignment(existingTaskRows[0]),
-            notice,
-            alreadyConverted: true,
-          };
-        }
-      }
-
-      // Check if assignment exists by provenance (source = 'notice' and source_id = noticeId)
       const { rows: existingBySource } = await client.query(
         'SELECT * FROM assignments WHERE user_id = $1 AND source = $2 AND source_id = $3 LIMIT 1',
         [userId, 'notice', noticeId],
       );
       if (existingBySource.length > 0) {
-        await client.query(
-          'UPDATE notices SET is_converted = TRUE, converted_to_task_id = $1, converted_at = COALESCE(converted_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-          [existingBySource[0].id, noticeId],
-        );
         await client.query('COMMIT');
         return {
           task: mapRowToAssignment(existingBySource[0]),
@@ -848,11 +877,15 @@ export const noticesService = {
       `;
       const { rows: updatedNoticeRows } = await client.query(updateNoticeQuery, [taskId, notice.id]);
 
-      await client.query('COMMIT');
+      const returnedNoticeRow = {
+        ...updatedNoticeRows[0],
+        user_converted_task_id: taskId,
+        user_converted_at: new Date().toISOString(),
+      };
 
       return {
         task: mapRowToAssignment(insertedTaskRows[0]),
-        notice: mapRowToNotice(updatedNoticeRows[0]),
+        notice: mapRowToNotice(returnedNoticeRow, userId),
         alreadyConverted: false,
       };
     } catch (err) {

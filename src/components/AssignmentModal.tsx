@@ -24,7 +24,7 @@ export default function AssignmentModal({
   const [formData, setFormData] = useState({
     title: initialData?.title || '',
     description: initialData?.description || '',
-    dueDate: initialData?.dueDate || new Date().toISOString().split('T')[0],
+    dueDate: initialData?.dueDate || '',
     dueTime: initialData?.dueTime || '',
     priority: initialData?.priority || ('medium' as 'low' | 'medium' | 'high' | 'urgent'),
     reminder: initialData?.reminder || 'none',
@@ -53,8 +53,8 @@ export default function AssignmentModal({
       setError('Title cannot be empty.');
       return;
     }
-    if (!isValidDateString(formData.dueDate)) {
-      setError('A valid due date is required.');
+    if (formData.dueDate && !isValidDateString(formData.dueDate)) {
+      setError('Please provide a valid due date.');
       return;
     }
 
@@ -140,13 +140,12 @@ export default function AssignmentModal({
               <label htmlFor="dueDate" className="block text-xs font-semibold text-[var(--cf-text)] mb-1.5">
                 <span className="flex items-center gap-1.5">
                   <Calendar className="w-3.5 h-3.5 text-[var(--cf-text-tertiary)]" />
-                  Due Date *
+                  Due Date (Optional)
                 </span>
               </label>
               <Input
                 id="dueDate"
                 type="date"
-                required
                 value={formData.dueDate}
                 onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
                 className="text-xs"

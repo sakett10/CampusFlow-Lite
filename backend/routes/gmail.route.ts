@@ -435,7 +435,10 @@ router.post('/sync', requireAuth(), async (req, res) => {
 
   try {
     const reviewer = isReviewer(req);
-    const batchSize = typeof req.body?.batchSize === 'number' ? req.body.batchSize : 30;
+    const rawBatchSize = Number(req.body?.batchSize);
+    const batchSize = Number.isInteger(rawBatchSize)
+      ? Math.min(Math.max(rawBatchSize, 1), 100)
+      : 30;
     const query = typeof req.body?.query === 'string' ? req.body.query : (typeof req.query?.q === 'string' ? (req.query.q as string) : undefined);
     const syncHistorical = Boolean(req.body?.syncHistorical || req.query?.syncHistorical);
     const stats = await syncGmailMessagesForUser(userId, batchSize, reviewer, { query, syncHistorical });
