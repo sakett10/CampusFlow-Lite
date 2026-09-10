@@ -1,7 +1,9 @@
+import type { PoolClient } from 'pg';
 import { pool } from '../db.js';
 import { randomUUID } from 'node:crypto';
 import type { Assignment } from '../types.js';
-import { noticesService } from './notices.service.js';
+import { noticesService, UnauthorizedNoticeAccessError } from './notices.service.js';
+export { UnauthorizedNoticeAccessError };
 
 export const mapRowToAssignment = (row: Record<string, unknown>): Assignment => ({
   id: row.id as string,
@@ -34,13 +36,6 @@ export class UnauthorizedSourceEmailError extends Error {
   }
 }
 
-export class UnauthorizedNoticeAccessError extends Error {
-  constructor(message = 'Notice not found or access denied') {
-    super(message);
-    this.name = 'UnauthorizedNoticeAccessError';
-  }
-}
-
 export const assignmentsService = {
   getAll: async (userId: string): Promise<Assignment[]> => {
     const { rows } = await pool.query(
@@ -64,9 +59,11 @@ export const assignmentsService = {
   add: async (
     userId: string,
     item: Omit<Assignment, 'id'>,
+    client?: PoolClient,
   ): Promise<Assignment> => {
+    const db = client || pool;
     if (item.courseId) {
-      const courseCheck = await pool.query(
+      const courseCheck = await db.query(
         'SELECT id FROM courses WHERE id = $1 AND user_id = $2',
         [item.courseId, userId],
       );
@@ -79,7 +76,7 @@ export const assignmentsService = {
       if (!item.sourceId) {
         throw new UnauthorizedSourceEmailError('Source email ID is required');
       }
-      const emailCheck = await pool.query(
+      const emailCheck = await db.query(
         'SELECT id FROM campus_emails WHERE user_id = $1 AND (source_message_id = $2 OR id::text = $2) LIMIT 1',
         [userId, item.sourceId],
       );
@@ -92,8 +89,8 @@ export const assignmentsService = {
       if (!item.sourceId) {
         throw new UnauthorizedNoticeAccessError('Notice ID is required');
       }
-      const notice = await noticesService.getById(item.sourceId, false, userId);
-      if (!notice) {
+      const notice = await noticesService.getById(item.sourceId, false, userId, client);
+      if (!notice || notice.status === 'archived' || (notice.createdByUserId !== userId && notice.status !== 'published')) {
         throw new UnauthorizedNoticeAccessError();
       }
     }
@@ -136,7 +133,7 @@ export const assignmentsService = {
       item.sourceId || null,
     ];
 
-    const { rows } = await pool.query(query, values);
+    const { rows } = await db.query(query, values);
     return mapRowToAssignment(rows[0]);
   },
 
@@ -181,7 +178,7 @@ export const assignmentsService = {
           throw new UnauthorizedNoticeAccessError('Notice ID is required');
         }
         const notice = await noticesService.getById(effectiveSourceId, false, userId);
-        if (!notice) {
+        if (!notice || notice.status === 'archived' || (notice.createdByUserId !== userId && notice.status !== 'published')) {
           throw new UnauthorizedNoticeAccessError();
         }
       }

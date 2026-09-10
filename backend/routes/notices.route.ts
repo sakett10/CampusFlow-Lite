@@ -14,6 +14,7 @@ import {
 } from '../services/notices.service.js';
 import { NoticeValidationError } from '../services/noticeValidator.js';
 import { GmailNotConnectedError } from '../services/gmail.service.js';
+import { CourseNotFoundError } from '../services/assignments.service.js';
 import type { NoticeCategory, NoticePriority, NoticeStatus } from '../types.js';
 
 const router = Router();
@@ -88,7 +89,8 @@ router.post('/:id/convert-to-task', requireAuth(), async (req, res) => {
     return res.status(401).json({ error: 'Unauthenticated' });
   }
 
-  const { id } = req.params;
+  const rawId = req.params.id;
+  const id = Array.isArray(rawId) ? rawId[0] : rawId;
   if (!id || typeof id !== 'string') {
     return res.status(400).json({ error: 'Invalid notice ID' });
   }
@@ -97,13 +99,22 @@ router.post('/:id/convert-to-task', requireAuth(), async (req, res) => {
     const result = await noticesService.convertToTask(auth.userId, id, req.body);
     return res.status(result.alreadyConverted ? 200 : 201).json(result);
   } catch (error) {
-    if (error instanceof NoticeNotFoundError) {
-      return res.status(404).json({ error: error.message });
+    if (error instanceof NoticeNotFoundError || (error as Error)?.name === 'NoticeNotFoundError') {
+      return res.status(404).json({ error: (error as Error).message });
     }
-    if (error instanceof UnauthorizedNoticeAccessError) {
-      return res.status(403).json({ error: error.message });
+    if (
+      error instanceof UnauthorizedNoticeAccessError ||
+      (error as Error)?.name === 'UnauthorizedNoticeAccessError'
+    ) {
+      return res.status(403).json({ error: (error as Error).message });
     }
-    console.error('Failed to convert notice to task:', error);
+    if (
+      error instanceof CourseNotFoundError ||
+      (error as Error)?.name === 'CourseNotFoundError'
+    ) {
+      return res.status(404).json({ error: (error as Error).message });
+    }
+    console.error('Failed to convert notice to task:', (error as Error)?.message || error);
     return res.status(500).json({ error: 'Failed to convert notice to task' });
   }
 });

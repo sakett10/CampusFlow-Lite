@@ -1,3 +1,4 @@
+import type { PoolClient } from 'pg';
 import { pool } from '../db.js';
 import { randomUUID } from 'node:crypto';
 import type {
@@ -17,12 +18,12 @@ import {
 } from './gmail.service.js';
 import { noticeAnalyzerService } from './noticeAnalyzer.service.js';
 import { notificationsService } from './notifications.service.js';
-import { mapRowToAssignment } from './assignments.service.js';
+import { mapRowToAssignment, assignmentsService } from './assignments.service.js';
 import { parseNaturalDate } from './deadlineParser.service.js';
 import { isReviewerUserId } from '../middleware/requireAuth.js';
 
 export class UnauthorizedNoticeAccessError extends Error {
-  constructor(message = 'You do not have permission to access or convert this notice') {
+  constructor(message = 'Notice not found or access denied') {
     super(message);
     this.name = 'UnauthorizedNoticeAccessError';
   }
@@ -459,7 +460,12 @@ export const noticesService = {
     return rows.map((r) => mapRowToNotice(r, filters.userId));
   },
 
-  getById: async (id: string, isReviewer: boolean, userId?: string): Promise<Notice | null> => {
+  getById: async (
+    id: string,
+    isReviewer: boolean,
+    userId?: string,
+    client?: PoolClient,
+  ): Promise<Notice | null> => {
     let query: string;
     let values: unknown[];
 
@@ -481,7 +487,8 @@ export const noticesService = {
       values = [id];
     }
 
-    const { rows } = await pool.query(query, values);
+    const db = client || pool;
+    const { rows } = await db.query(query, values);
     if (rows.length === 0) return null;
 
     const notice = mapRowToNotice(rows[0], userId);
@@ -770,7 +777,7 @@ export const noticesService = {
     try {
       await client.query('BEGIN');
 
-      // 1. Fetch notice FOR UPDATE to ensure isolation and prevent race conditions
+      // 1. Lock source notice row with FOR UPDATE
       const { rows: noticeRows } = await client.query(
         'SELECT * FROM notices WHERE id::text = $1 FOR UPDATE',
         [noticeId],
@@ -781,41 +788,49 @@ export const noticesService = {
       }
 
       const rawNotice = noticeRows[0];
-      const notice = mapRowToNotice(rawNotice);
-
-      // 2. Authorization: student can convert their own notice OR an official published campus notice
       const isNonProd = process.env.NODE_ENV !== 'production';
-      const isOwner = notice.createdByUserId === userId;
+      const isOwner = Boolean(rawNotice.created_by_user_id === userId);
       const isCampusNotice =
-        notice.status === 'published' &&
-        (isReviewerUserId(notice.createdByUserId) ||
-          (isNonProd && (notice.createdByUserId === 'admin' || notice.createdByUserId.startsWith('reviewer'))) ||
-          !notice.sourceAccountEmail);
+        isReviewerUserId(rawNotice.created_by_user_id) ||
+        (isNonProd &&
+          (rawNotice.created_by_user_id === 'admin' ||
+            rawNotice.created_by_user_id.startsWith('reviewer'))) ||
+        !rawNotice.source_account_email;
 
+      // 2. Verify source notice is accessible to the authenticated user
       if (!isOwner && !isCampusNotice) {
         throw new UnauthorizedNoticeAccessError(
           "You cannot convert another student's notice to a task",
         );
       }
 
-      // 3. Check if already converted for this user (prevent duplicate tasks)
+      if (rawNotice.status === 'archived' || (!isOwner && rawNotice.status !== 'published')) {
+        throw new UnauthorizedNoticeAccessError(
+          'Notice is archived or cannot be converted to a task',
+        );
+      }
+
+      // 3. Check per-user duplicate conversion using the same transaction client
       const { rows: existingBySource } = await client.query(
         'SELECT * FROM assignments WHERE user_id = $1 AND source = $2 AND source_id = $3 LIMIT 1',
         [userId, 'notice', noticeId],
       );
+
       if (existingBySource.length > 0) {
         await client.query('COMMIT');
         return {
           task: mapRowToAssignment(existingBySource[0]),
-          notice: { ...notice, isConverted: true, convertedToTaskId: existingBySource[0].id },
+          notice: mapRowToNotice(rawNotice, userId),
           alreadyConverted: true,
         };
       }
 
       // 4. Extract deadline without fabricating data
       let dueDate = customData?.dueDate || '';
-      if (!dueDate && notice.importantDates && notice.importantDates.length > 0) {
-        const deadlineDate = notice.importantDates.find((d) => {
+      const importantDates =
+        (rawNotice.important_dates as Array<{ label: string; date: string }>) || [];
+      if (!dueDate && importantDates.length > 0) {
+        const deadlineDate = importantDates.find((d) => {
           const lbl = (d.label || '').toLowerCase();
           return (
             lbl.includes('deadline') ||
@@ -831,65 +846,73 @@ export const noticesService = {
         }
       }
 
-      const title = (customData?.title || notice.title).trim();
-      const description = notice.summary || '';
+      const title = (customData?.title || rawNotice.title).trim();
+      const description = rawNotice.summary || '';
       const priority =
         customData?.priority ||
-        (notice.priority === 'urgent'
+        (rawNotice.priority === 'urgent'
           ? 'urgent'
-          : notice.priority === 'important'
+          : rawNotice.priority === 'important'
           ? 'high'
           : 'medium');
       const dueTime = customData?.dueTime || null;
       const reminder = customData?.reminder || (dueDate ? '1d_before' : null);
       const courseId = customData?.courseId || null;
 
-      const taskId = randomUUID();
-
-      // 5. Insert Task into assignments table
-      const insertQuery = `
-        INSERT INTO assignments (
-          id, user_id, course_id, title, description, due_date, status,
-          due_time, reminder, priority, source, source_id, created_at, updated_at
-        ) VALUES (
-          $1, $2, $3, $4, $5, $6, 'PENDING', $7, $8, $9, 'notice', $10, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-        ) RETURNING *
-      `;
-      const { rows: insertedTaskRows } = await client.query(insertQuery, [
-        taskId,
+      // 5. Create the assignment using the same transaction client
+      const task = await assignmentsService.add(
         userId,
-        courseId,
-        title,
-        description,
-        dueDate,
-        dueTime,
-        reminder,
-        priority,
-        notice.id,
-      ]);
+        {
+          title,
+          description,
+          dueDate,
+          dueTime,
+          reminder,
+          priority,
+          status: 'PENDING',
+          courseId,
+          source: 'notice',
+          sourceId: rawNotice.id,
+        },
+        client,
+      );
 
-      // 6. Record conversion on Notice
-      const updateNoticeQuery = `
-        UPDATE notices
-        SET is_converted = TRUE, converted_to_task_id = $1, converted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-        WHERE id = $2
-        RETURNING *
-      `;
-      const { rows: updatedNoticeRows } = await client.query(updateNoticeQuery, [taskId, notice.id]);
+      // 6. Perform required notice metadata update using the same client
+      // Require the update to affect exactly one row
+      const updateRes = await client.query(
+        `UPDATE notices
+         SET is_converted = TRUE, converted_to_task_id = $1, converted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2`,
+        [task.id, rawNotice.id],
+      );
 
-      const returnedNoticeRow = {
-        ...updatedNoticeRows[0],
-        user_converted_task_id: taskId,
-        user_converted_at: new Date().toISOString(),
+      if (updateRes.rowCount !== 1) {
+        throw new Error(
+          `Notice conversion update failed: expected 1 row affected, got ${updateRes.rowCount}`,
+        );
+      }
+
+      // 7. COMMIT
+      await client.query('COMMIT');
+
+      const responseNotice: Notice = {
+        ...mapRowToNotice(rawNotice, userId),
+        isConverted: true,
+        convertedToTaskId: task.id,
+        convertedAt: new Date().toISOString(),
       };
 
       return {
-        task: mapRowToAssignment(insertedTaskRows[0]),
-        notice: mapRowToNotice(returnedNoticeRow, userId),
+        task,
+        notice: responseNotice,
         alreadyConverted: false,
       };
     } catch (err) {
-      await client.query('ROLLBACK');
+      try {
+        await client.query('ROLLBACK');
+      } catch {
+        // Ignore rollback failure if connection was severed
+      }
       throw err;
     } finally {
       client.release();

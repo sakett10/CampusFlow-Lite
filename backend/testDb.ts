@@ -167,5 +167,34 @@ export function createTestPool(): pg.Pool {
 
 
   const { Pool } = db.adapters.createPg();
-  return new Pool() as unknown as pg.Pool;
+  const testPool = new Pool() as unknown as pg.Pool;
+
+  const origConnect = testPool.connect.bind(testPool);
+  testPool.connect = (async () => {
+    const client = await origConnect();
+    let txBackup: { restore: () => void } | null = null;
+    const origQuery = client.query.bind(client);
+    client.query = (async (...args: unknown[]) => {
+      const q = (typeof args[0] === 'string' ? args[0] : (args[0] as { text?: string })?.text || '').trim().toUpperCase();
+      if (q === 'BEGIN') {
+        txBackup = db.backup();
+        return (origQuery as (...a: unknown[]) => unknown)(...args);
+      }
+      if (q === 'ROLLBACK') {
+        if (txBackup) {
+          txBackup.restore();
+          txBackup = null;
+        }
+        return (origQuery as (...a: unknown[]) => unknown)(...args);
+      }
+      if (q === 'COMMIT') {
+        txBackup = null;
+        return (origQuery as (...a: unknown[]) => unknown)(...args);
+      }
+      return (origQuery as (...a: unknown[]) => unknown)(...args);
+    }) as typeof client.query;
+    return client;
+  }) as typeof testPool.connect;
+
+  return testPool;
 }

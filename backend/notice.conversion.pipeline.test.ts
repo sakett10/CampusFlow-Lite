@@ -76,6 +76,7 @@ import { app } from './index.js';
 import { pool } from './db.js';
 import { setNoticeAnalyzer } from './services/noticeAnalyzer.service.js';
 import { storageService, isItemActive } from './services/storage.service.js';
+import { noticesService } from './services/notices.service.js';
 
 describe('Notice-to-Task Conversion, August Recovery & Idempotency Pipeline', () => {
   beforeEach(async () => {
@@ -425,5 +426,368 @@ describe('Notice-to-Task Conversion, August Recovery & Idempotency Pipeline', ()
     const items = await storageService.getAll('student_1');
     const augustNoticeInFeed = items.find((i) => i.title?.includes('August 2026 Research Award'));
     expect(augustNoticeInFeed).toBeDefined();
+  });
+
+  describe('Per-User Notice Conversion Security & Isolation Regression Suite', () => {
+    it('1. successful shared notice conversion commits both sides', async () => {
+      const noticeId = randomUUID();
+      await pool.query(
+        `INSERT INTO notices (id, created_by_user_id, title, summary, category, priority, status)
+         VALUES ($1, 'reviewer_1', 'Campus Hackathon 2026', 'Registration details', 'event', 'urgent', 'published')`,
+        [noticeId],
+      );
+
+      const res = await request(app)
+        .post(`/api/notices/${noticeId}/convert-to-task`)
+        .set('Authorization', 'Bearer student_1')
+        .send({
+          dueDate: '2026-10-15',
+          priority: 'urgent',
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.alreadyConverted).toBe(false);
+      expect(res.body.task.source).toBe('notice');
+      expect(res.body.task.sourceId).toBe(noticeId);
+      expect(res.body.task.title).toBe('Campus Hackathon 2026');
+
+      // Assert assignment committed
+      const { rows: taskRows } = await pool.query(
+        "SELECT * FROM assignments WHERE user_id = 'student_1' AND source = 'notice' AND source_id = $1",
+        [noticeId],
+      );
+      expect(taskRows).toHaveLength(1);
+      expect(taskRows[0].id).toBe(res.body.task.id);
+
+      // Assert notice metadata committed
+      const { rows: noticeRows } = await pool.query(
+        'SELECT * FROM notices WHERE id = $1',
+        [noticeId],
+      );
+      expect(noticeRows[0].is_converted).toBe(true);
+      expect(noticeRows[0].converted_to_task_id).toBe(res.body.task.id);
+    });
+
+    it('2. student converts their own private notice → success', async () => {
+      const noticeId = randomUUID();
+      await pool.query(
+        `INSERT INTO notices (
+          id, created_by_user_id, title, summary, category, priority, status, source_account_email
+        ) VALUES ($1, 'student_1', 'My Private Research Draft', 'Personal notes', 'academic', 'normal', 'pending', 'student1@vitstudent.ac.in')`,
+        [noticeId],
+      );
+
+      const res = await request(app)
+        .post(`/api/notices/${noticeId}/convert-to-task`)
+        .set('Authorization', 'Bearer student_1')
+        .send({
+          title: 'Review Private Draft',
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.task.source).toBe('notice');
+      expect(res.body.task.sourceId).toBe(noticeId);
+
+      const { rows } = await pool.query(
+        "SELECT * FROM assignments WHERE user_id = 'student_1' AND source = 'notice' AND source_id = $1",
+        [noticeId],
+      );
+      expect(rows).toHaveLength(1);
+    });
+
+    it("3. student cannot convert another student's private notice → 403", async () => {
+      const noticeId = randomUUID();
+      await pool.query(
+        `INSERT INTO notices (
+          id, created_by_user_id, title, summary, category, priority, status, source_account_email
+        ) VALUES ($1, 'student_2', 'Student 2 Private Research', 'Private', 'academic', 'normal', 'pending', 'student2@vitstudent.ac.in')`,
+        [noticeId],
+      );
+
+      const res = await request(app)
+        .post(`/api/notices/${noticeId}/convert-to-task`)
+        .set('Authorization', 'Bearer student_1')
+        .send({ title: 'Hijacked Task' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toContain("You cannot convert another student's notice to a task");
+
+      const { rows } = await pool.query(
+        "SELECT * FROM assignments WHERE user_id = 'student_1' AND source_id = $1",
+        [noticeId],
+      );
+      expect(rows).toHaveLength(0);
+    });
+
+    it('4. notice update failure rolls back assignment creation', async () => {
+      const noticeId = randomUUID();
+      await pool.query(
+        `INSERT INTO notices (id, created_by_user_id, title, summary, category, priority, status)
+         VALUES ($1, 'reviewer_1', 'Rollback On Update Failure Notice', 'Summary', 'academic', 'normal', 'published')`,
+        [noticeId],
+      );
+
+      // Spy on pool.connect so client.query throws on UPDATE notices
+      const origConnect = pool.connect.bind(pool);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const patchedClients: Array<{ client: any; originalQuery: any }> = [];
+      const connectSpy = vi.spyOn(pool, 'connect').mockImplementation(async () => {
+        const client = await origConnect();
+        const originalQuery = client.query.bind(client);
+        patchedClients.push({ client, originalQuery });
+        client.query = (async (...args: unknown[]) => {
+          const sql = typeof args[0] === 'string' ? args[0] : (args[0] as { text?: string })?.text || '';
+          if (sql.includes('UPDATE notices')) {
+            throw new Error('Simulated notice update failure');
+          }
+          return (originalQuery as (...a: unknown[]) => unknown)(...args);
+        }) as typeof client.query;
+        return client;
+      });
+
+      try {
+        const res = await request(app)
+          .post(`/api/notices/${noticeId}/convert-to-task`)
+          .set('Authorization', 'Bearer student_1')
+          .send({ title: 'Task That Must Rollback' });
+
+        expect(res.status).toBe(500);
+
+        // Atomic transaction rollback guarantees NO assignment exists!
+        const { rows: taskRows } = await pool.query(
+          'SELECT * FROM assignments WHERE source_id = $1',
+          [noticeId],
+        );
+        expect(taskRows).toHaveLength(0);
+
+        // Notice remains unconverted
+        const { rows: noticeRows } = await pool.query(
+          'SELECT is_converted FROM notices WHERE id = $1',
+          [noticeId],
+        );
+        expect(noticeRows[0].is_converted).toBe(false);
+      } finally {
+        for (const { client, originalQuery } of patchedClients) {
+          client.query = originalQuery;
+        }
+        connectSpy.mockRestore();
+      }
+    });
+
+    it('5. notice deletion/failure rolls back assignment creation', async () => {
+      const ghostNoticeId = randomUUID();
+      const res = await request(app)
+        .post(`/api/notices/${ghostNoticeId}/convert-to-task`)
+        .set('Authorization', 'Bearer student_1');
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toContain('Notice not found');
+
+      const { rows } = await pool.query(
+        'SELECT * FROM assignments WHERE source_id = $1',
+        [ghostNoticeId],
+      );
+      expect(rows).toHaveLength(0);
+    });
+
+    it('6. existing per-user duplicate conversion remains idempotent', async () => {
+      const noticeId = randomUUID();
+      await pool.query(
+        `INSERT INTO notices (id, created_by_user_id, title, summary, category, priority, status)
+         VALUES ($1, 'reviewer_1', 'Duplicate Test Notice', 'Summary', 'academic', 'normal', 'published')`,
+        [noticeId],
+      );
+
+      const res1 = await request(app)
+        .post(`/api/notices/${noticeId}/convert-to-task`)
+        .set('Authorization', 'Bearer student_1');
+      expect(res1.status).toBe(201);
+      expect(res1.body.alreadyConverted).toBe(false);
+
+      const res2 = await request(app)
+        .post(`/api/notices/${noticeId}/convert-to-task`)
+        .set('Authorization', 'Bearer student_1');
+      expect(res2.status).toBe(200);
+      expect(res2.body.alreadyConverted).toBe(true);
+      expect(res2.body.task.id).toBe(res1.body.task.id);
+      expect(res2.body.notice.title).toBe('Duplicate Test Notice');
+
+      const { rows } = await pool.query(
+        "SELECT * FROM assignments WHERE user_id = 'student_1' AND source = 'notice' AND source_id = $1",
+        [noticeId],
+      );
+      expect(rows).toHaveLength(1);
+    });
+
+    it('7. Student A and Student B retain independent conversion state', async () => {
+      const noticeId = randomUUID();
+      await pool.query(
+        `INSERT INTO notices (id, created_by_user_id, title, summary, category, priority, status)
+         VALUES ($1, 'reviewer_1', 'Semester Exam Timetable Released', 'Check portal for dates', 'exam', 'urgent', 'published')`,
+        [noticeId],
+      );
+
+      // Student A converts
+      const resA = await request(app)
+        .post(`/api/notices/${noticeId}/convert-to-task`)
+        .set('Authorization', 'Bearer student_1');
+      expect(resA.status).toBe(201);
+      const taskAId = resA.body.task.id;
+
+      // Student B views notice list via API -> unconverted
+      const getNoticesResB = await request(app)
+        .get('/api/notices')
+        .set('Authorization', 'Bearer student_2');
+      expect(getNoticesResB.status).toBe(200);
+      const noticeInListB = getNoticesResB.body.find((n: { id: string }) => n.id === noticeId);
+      expect(noticeInListB).toBeDefined();
+      expect(noticeInListB.isConverted).toBe(false);
+      expect(noticeInListB.convertedToTaskId).toBeNull();
+
+      // Student B views single notice by ID -> unconverted
+      const getSingleResB = await request(app)
+        .get(`/api/notices/${noticeId}`)
+        .set('Authorization', 'Bearer student_2');
+      expect(getSingleResB.status).toBe(200);
+      expect(getSingleResB.body.isConverted).toBe(false);
+      expect(getSingleResB.body.convertedToTaskId).toBeNull();
+
+      // Student B can independently convert the same shared notice
+      const resB = await request(app)
+        .post(`/api/notices/${noticeId}/convert-to-task`)
+        .set('Authorization', 'Bearer student_2');
+      expect(resB.status).toBe(201);
+      expect(resB.body.alreadyConverted).toBe(false);
+      const taskBId = resB.body.task.id;
+      expect(taskBId).not.toBe(taskAId);
+
+      // Both students have their own distinct task in assignments
+      const { rows: rowsA } = await pool.query(
+        "SELECT * FROM assignments WHERE user_id = 'student_1' AND source_id = $1",
+        [noticeId],
+      );
+      const { rows: rowsB } = await pool.query(
+        "SELECT * FROM assignments WHERE user_id = 'student_2' AND source_id = $1",
+        [noticeId],
+      );
+      expect(rowsA).toHaveLength(1);
+      expect(rowsB).toHaveLength(1);
+      expect(rowsA[0].id).toBe(taskAId);
+      expect(rowsB[0].id).toBe(taskBId);
+
+      // Now Student B sees it converted for themselves
+      const getFinalResB = await request(app)
+        .get(`/api/notices/${noticeId}`)
+        .set('Authorization', 'Bearer student_2');
+      expect(getFinalResB.body.isConverted).toBe(true);
+      expect(getFinalResB.body.convertedToTaskId).toBe(taskBId);
+    });
+
+    it('8. unavailable/archived notice cannot be fabricated or converted', async () => {
+      const archivedNoticeId = randomUUID();
+      await pool.query(
+        `INSERT INTO notices (id, created_by_user_id, title, summary, category, priority, status)
+         VALUES ($1, 'reviewer_1', 'Archived Campus Notice', 'Archived info', 'general', 'normal', 'archived')`,
+        [archivedNoticeId],
+      );
+
+      // Conversion must be rejected with 403
+      const res = await request(app)
+        .post(`/api/notices/${archivedNoticeId}/convert-to-task`)
+        .set('Authorization', 'Bearer student_1');
+      expect(res.status).toBe(403);
+      expect(res.body.error).toMatch(/archived/i);
+
+      // No assignment created
+      const { rows: taskRows } = await pool.query(
+        'SELECT * FROM assignments WHERE source_id = $1',
+        [archivedNoticeId],
+      );
+      expect(taskRows).toHaveLength(0);
+
+      // Even if an assignment exists for an archived notice, convertToTask must NOT authorize it or fabricate a notice
+      await pool.query(
+        `INSERT INTO assignments (id, user_id, title, status, source, source_id)
+         VALUES ($1, 'student_1', 'Old Task For Archived Notice', 'PENDING', 'notice', $2)`,
+        [randomUUID(), archivedNoticeId],
+      );
+
+      const resWithExisting = await request(app)
+        .post(`/api/notices/${archivedNoticeId}/convert-to-task`)
+        .set('Authorization', 'Bearer student_1');
+      expect(resWithExisting.status).toBe(403);
+      expect(resWithExisting.body.error).toMatch(/archived/i);
+
+      // Even if an assignment references a completely nonexistent notice ID, convertToTask must NOT fabricate or authorize it
+      const nonexistentNoticeId = randomUUID();
+      await pool.query(
+        `INSERT INTO assignments (id, user_id, title, status, source, source_id)
+         VALUES ($1, 'student_1', 'Old Task For Deleted Notice', 'PENDING', 'notice', $2)`,
+        [randomUUID(), nonexistentNoticeId],
+      );
+
+      const resNonexistent = await request(app)
+        .post(`/api/notices/${nonexistentNoticeId}/convert-to-task`)
+        .set('Authorization', 'Bearer student_1');
+      expect(resNonexistent.status).toBe(404);
+      expect(resNonexistent.body.error).toContain('Notice not found');
+    });
+
+    it('9. assignment referencing unavailable/archived notice cannot make getById fabricate an accessible Notice', async () => {
+      const deletedNoticeId = randomUUID();
+      const archivedNoticeId = randomUUID();
+
+      // Create archived notice in notices table
+      await pool.query(
+        `INSERT INTO notices (id, created_by_user_id, title, summary, category, priority, status)
+         VALUES ($1, 'reviewer_1', 'Archived Notice For Task', 'Summary', 'academic', 'normal', 'archived')`,
+        [archivedNoticeId],
+      );
+
+      // Insert assignments referencing both nonexistent and archived notices
+      await pool.query(
+        `INSERT INTO assignments (id, user_id, title, status, source, source_id)
+         VALUES
+           ($1, 'student_1', 'Task For Deleted Notice', 'PENDING', 'notice', $2),
+           ($3, 'student_1', 'Task For Archived Notice', 'PENDING', 'notice', $4)`,
+        [randomUUID(), deletedNoticeId, randomUUID(), archivedNoticeId],
+      );
+
+      // Calling getById for deleted notice must return null (NEVER a fabricated Notice)
+      const deletedResult = await noticesService.getById(deletedNoticeId, false, 'student_1');
+      expect(deletedResult).toBeNull();
+
+      // Calling getById for archived notice by student must return null (inaccessible)
+      const archivedResult = await noticesService.getById(archivedNoticeId, false, 'student_1');
+      expect(archivedResult).toBeNull();
+    });
+
+    it('10. failed conversion with invalid course leaves no partial task/assignment', async () => {
+      const noticeId = randomUUID();
+      await pool.query(
+        `INSERT INTO notices (id, created_by_user_id, title, summary, category, priority, status)
+         VALUES ($1, 'reviewer_1', 'Campus Placement Drive', 'Placement talk at 5 PM', 'placement', 'important', 'published')`,
+        [noticeId],
+      );
+
+      // Attempt to convert with an unowned/nonexistent courseId
+      const res = await request(app)
+        .post(`/api/notices/${noticeId}/convert-to-task`)
+        .set('Authorization', 'Bearer student_1')
+        .send({
+          courseId: '00000000-0000-0000-0000-000000000000',
+          title: 'Placement Task With Ghost Course',
+        });
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toContain('Course not found or access denied');
+
+      // Crucial check: Verify NO partial assignment row exists in the database
+      const { rows: taskRows } = await pool.query(
+        'SELECT * FROM assignments WHERE source_id = $1',
+        [noticeId],
+      );
+      expect(taskRows).toHaveLength(0);
+    });
   });
 });
