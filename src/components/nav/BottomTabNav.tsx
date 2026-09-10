@@ -20,8 +20,8 @@ export default function BottomTabNav() {
                 aria-current={active ? 'page' : undefined}
                 aria-label={item.label}
                 className={[
-                  'relative flex min-h-12 w-full min-w-0 flex-col items-center justify-center gap-1 px-1 py-1 rounded-xl transition-all duration-[var(--cf-transition-fast)]',
-                  'focus-visible:outline-2 focus-visible:outline-[var(--cf-brand)] focus-visible:outline-offset-[-2px]',
+                  'relative flex min-h-12 w-full min-w-0 flex-col items-center justify-center gap-1 px-1 py-1 rounded-xl transition-all duration-[var(--cf-transition-fast)] active:scale-[0.97] motion-reduce:active:scale-100',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cf-brand)] focus-visible:ring-offset-[-2px]',
                   active
                     ? 'text-[var(--cf-brand)] font-semibold'
                     : 'text-[var(--cf-text-tertiary)] hover:text-[var(--cf-text-secondary)]',

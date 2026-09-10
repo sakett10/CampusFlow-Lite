@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { Course } from '../lib/types';
 import { X } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 
@@ -34,8 +34,6 @@ export default function CourseModal({ isOpen, onClose, onSave, initialData }: Co
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -63,70 +61,89 @@ export default function CourseModal({ isOpen, onClose, onSave, initialData }: Co
   };
 
   return (
-    <div
-      className="fixed inset-0 bg-[var(--cf-overlay)] flex items-center justify-center p-4 z-50 transition-opacity backdrop-blur-xs"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.96 }}
-        transition={{ duration: 0.18, ease: 'easeOut' }}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="course-modal-title"
-        onClick={(e) => e.stopPropagation()}
-        className="bg-[var(--cf-surface)] border border-[var(--cf-border)] rounded-2xl shadow-[var(--cf-elev-3)] w-full max-w-md p-6 max-h-[90vh] overflow-y-auto relative"
-      >
-        <div className="flex items-center justify-between mb-4">
-          <h2 id="course-modal-title" className="font-sans-display text-lg font-bold text-[var(--cf-text)]">
-            {initialData ? 'Edit Course' : 'Add Course'}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-[var(--cf-text-tertiary)] hover:text-[var(--cf-text)] hover:bg-[var(--cf-surface-muted)] rounded-lg p-1.5 transition-colors cursor-pointer"
-            aria-label="Close modal"
+    <AnimatePresence>
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-[var(--cf-overlay)] flex items-center justify-center p-4 z-50 backdrop-blur-xs"
+          role="presentation"
+          onClick={onClose}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.97 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.97 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="course-modal-title"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-[var(--cf-surface)] border border-[var(--cf-border)] rounded-2xl shadow-[var(--cf-elev-3)] w-full max-w-md p-6 max-h-[90vh] overflow-y-auto relative"
           >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+            <div className="flex items-center justify-between mb-4 border-b border-[var(--cf-border-subtle)] pb-3">
+              <h2 id="course-modal-title" className="font-sans-display text-lg font-bold text-[var(--cf-text)]">
+                {initialData ? 'Edit Course' : 'Add Course'}
+              </h2>
+              <button
+                type="button"
+                onClick={onClose}
+                className="text-[var(--cf-text-tertiary)] hover:text-[var(--cf-text)] hover:bg-[var(--cf-surface-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cf-brand)] rounded-lg p-1.5 transition-colors cursor-pointer"
+                aria-label="Close modal"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-        {error && <div className="mb-4 p-3 bg-[var(--cf-danger-subtle)] border border-[var(--cf-danger-border)] text-[var(--cf-danger)] rounded-xl text-xs font-medium">{error}</div>}
-        
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <Input id="courseCode" label="Course Code *" required value={formData.code} onChange={e => setFormData({ ...formData, code: e.target.value })} placeholder="e.g. CS101" />
-          </div>
-          <div>
-            <Input id="courseTitle" label="Course Title *" required value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} placeholder="Introduction to Computer Science" />
-          </div>
-          <div>
-            <Input id="instructor" label="Instructor *" required value={formData.instructor} onChange={e => setFormData({ ...formData, instructor: e.target.value })} placeholder="Dr. Smith" />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Input id="credits" label="Credits" type="number" min="0" required value={formData.credits} onChange={e => setFormData({ ...formData, credits: Number(e.target.value) })} />
-            </div>
-            <div>
-              <Input id="threshold" label="Threshold (%)" type="number" min="1" max="100" required value={formData.attendanceThreshold} onChange={e => setFormData({ ...formData, attendanceThreshold: Number(e.target.value) })} />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Input id="attendedClasses" label="Attended" type="number" min="0" required value={formData.attendedClasses} onChange={e => setFormData({ ...formData, attendedClasses: Number(e.target.value) })} />
-            </div>
-            <div>
-              <Input id="totalClasses" label="Total Classes" type="number" min="0" required value={formData.totalClasses} onChange={e => setFormData({ ...formData, totalClasses: Number(e.target.value) })} />
-            </div>
-          </div>
-          
-          <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-[var(--cf-border-subtle)]">
-            <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-            <Button type="submit" variant="primary">Save Course</Button>
-          </div>
-        </form>
-      </motion.div>
-    </div>
+            <AnimatePresence>
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.15 }}
+                  className="mb-4 overflow-hidden"
+                >
+                  <div className="p-3 bg-[var(--cf-danger-subtle)] border border-[var(--cf-danger-border)] text-[var(--cf-danger)] rounded-xl text-xs font-medium">
+                    {error}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <Input id="courseCode" label="Course Code *" required value={formData.code} onChange={e => setFormData({ ...formData, code: e.target.value })} placeholder="e.g. CS101" />
+              </div>
+              <div>
+                <Input id="courseTitle" label="Course Title *" required value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} placeholder="Introduction to Computer Science" />
+              </div>
+              <div>
+                <Input id="instructor" label="Instructor *" required value={formData.instructor} onChange={e => setFormData({ ...formData, instructor: e.target.value })} placeholder="Dr. Smith" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Input id="credits" label="Credits" type="number" min="0" required value={formData.credits} onChange={e => setFormData({ ...formData, credits: Number(e.target.value) })} />
+                </div>
+                <div>
+                  <Input id="threshold" label="Threshold (%)" type="number" min="1" max="100" required value={formData.attendanceThreshold} onChange={e => setFormData({ ...formData, attendanceThreshold: Number(e.target.value) })} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Input id="attendedClasses" label="Attended" type="number" min="0" required value={formData.attendedClasses} onChange={e => setFormData({ ...formData, attendedClasses: Number(e.target.value) })} />
+                </div>
+                <div>
+                  <Input id="totalClasses" label="Total Classes" type="number" min="0" required value={formData.totalClasses} onChange={e => setFormData({ ...formData, totalClasses: Number(e.target.value) })} />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-[var(--cf-border-subtle)]">
+                <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+                <Button type="submit" variant="primary">Save Course</Button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
   );
 }

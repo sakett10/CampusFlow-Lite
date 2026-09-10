@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Save, AlertCircle } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import type { Notice, NoticeCategory, NoticePriority, NoticeCandidate } from '../lib/types';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
@@ -77,30 +78,52 @@ const NoticeEditForm: React.FC<NoticeEditFormProps> = ({ notice, onClose, onSave
   };
 
   return (
-    <div className="bg-[var(--cf-surface)] border border-[var(--cf-border)] rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 shadow-2xl space-y-5">
+    <motion.div
+      initial={{ opacity: 0, scale: 0.97 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.97 }}
+      transition={{ duration: 0.18, ease: 'easeOut' }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="notice-edit-title"
+      onClick={(e) => e.stopPropagation()}
+      className="bg-[var(--cf-surface)] border border-[var(--cf-border)] rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 shadow-[var(--cf-elev-3)] space-y-5"
+    >
       <div className="flex items-center justify-between border-b border-[var(--cf-border-subtle)] pb-3">
         <div>
-          <h2 className="text-lg font-bold font-sans-display text-[var(--cf-text)]">
+          <h2 id="notice-edit-title" className="text-lg font-bold font-sans-display text-[var(--cf-text)]">
             Edit Notice Details
           </h2>
-          <p className="text-xs text-[var(--cf-text-secondary)] font-mono">
+          <p className="text-xs text-[var(--cf-text-secondary)] font-mono-meta">
             Review and refine information before publishing
           </p>
         </div>
         <button
+          type="button"
           onClick={onClose}
-          className="p-1.5 rounded-lg text-[var(--cf-text-tertiary)] hover:text-[var(--cf-text)] hover:bg-[var(--cf-surface-muted)] transition-colors"
+          className="p-1.5 rounded-lg text-[var(--cf-text-tertiary)] hover:text-[var(--cf-text)] hover:bg-[var(--cf-surface-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cf-brand)] transition-colors cursor-pointer"
+          aria-label="Close modal"
         >
           <X className="w-5 h-5" />
         </button>
       </div>
 
-      {error && (
-        <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.15 }}
+            className="overflow-hidden"
+          >
+            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs flex items-center gap-2 font-medium">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{error}</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <form onSubmit={handleSubmit} className="space-y-4 text-xs">
         <div>
@@ -124,7 +147,7 @@ const NoticeEditForm: React.FC<NoticeEditFormProps> = ({ notice, onClose, onSave
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value as NoticeCategory)}
-              className="w-full h-10 px-3 rounded-xl border border-[var(--cf-border)] bg-[var(--cf-surface)] text-[var(--cf-text)] font-mono text-xs focus:border-[var(--cf-brand)] focus:outline-none"
+              className="w-full h-10 px-3 rounded-xl border border-[var(--cf-border)] bg-[var(--cf-surface)] text-[var(--cf-text)] font-mono-meta text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cf-brand)] focus-visible:border-transparent transition-shadow cursor-pointer"
             >
               {CATEGORIES.map((cat) => (
                 <option key={cat} value={cat}>
@@ -141,7 +164,7 @@ const NoticeEditForm: React.FC<NoticeEditFormProps> = ({ notice, onClose, onSave
             <select
               value={priority}
               onChange={(e) => setPriority(e.target.value as NoticePriority)}
-              className="w-full h-10 px-3 rounded-xl border border-[var(--cf-border)] bg-[var(--cf-surface)] text-[var(--cf-text)] font-mono text-xs focus:border-[var(--cf-brand)] focus:outline-none"
+              className="w-full h-10 px-3 rounded-xl border border-[var(--cf-border)] bg-[var(--cf-surface)] text-[var(--cf-text)] font-mono-meta text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cf-brand)] focus-visible:border-transparent transition-shadow cursor-pointer"
             >
               {PRIORITIES.map((pri) => (
                 <option key={pri} value={pri}>
@@ -162,7 +185,7 @@ const NoticeEditForm: React.FC<NoticeEditFormProps> = ({ notice, onClose, onSave
             rows={3}
             placeholder="Concise factual summary..."
             required
-            className="w-full p-3 rounded-xl border border-[var(--cf-border)] bg-[var(--cf-surface)] text-[var(--cf-text)] text-xs focus:border-[var(--cf-brand)] focus:outline-none leading-relaxed"
+            className="w-full p-3 rounded-xl border border-[var(--cf-border)] bg-[var(--cf-surface)] text-[var(--cf-text)] text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cf-brand)] focus-visible:border-transparent leading-relaxed transition-shadow resize-none"
           />
         </div>
 
@@ -213,7 +236,7 @@ const NoticeEditForm: React.FC<NoticeEditFormProps> = ({ notice, onClose, onSave
           </Button>
         </div>
       </form>
-    </div>
+    </motion.div>
   );
 };
 
@@ -223,12 +246,28 @@ export const NoticeEditModal: React.FC<NoticeEditModalProps> = ({
   notice,
   onSave,
 }) => {
-  if (!isOpen || !notice) return null;
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <NoticeEditForm key={notice.id} notice={notice} onClose={onClose} onSave={onSave} />
-    </div>
+    <AnimatePresence>
+      {isOpen && notice && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[var(--cf-overlay)] backdrop-blur-xs"
+          role="presentation"
+          onClick={onClose}
+        >
+          <NoticeEditForm key={notice.id} notice={notice} onClose={onClose} onSave={onSave} />
+        </div>
+      )}
+    </AnimatePresence>
   );
 };
 

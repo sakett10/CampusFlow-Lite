@@ -21,6 +21,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
+import { NoticeCardSkeleton } from '../components/ui/Skeleton';
 
 const CATEGORIES: { value: NoticeCategory | 'all'; label: string }[] = [
   { value: 'all', label: 'All Categories' },
@@ -256,11 +257,10 @@ export const NoticeBoard: React.FC = () => {
                     setFilters({ ...filters, status: tab.value });
                     setSearchParams(tab.value === 'all' ? {} : { tab: tab.value });
                   }}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-mono font-bold whitespace-nowrap transition-all border ${
-
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-mono font-bold whitespace-nowrap transition-colors duration-150 border cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cf-brand)] ${
                     active
-                      ? 'bg-[var(--cf-brand)] text-white border-[var(--cf-brand)] shadow-sm'
-                      : 'bg-[var(--cf-surface-muted)] text-[var(--cf-text-secondary)] border-[var(--cf-border-subtle)] hover:text-[var(--cf-text)]'
+                      ? 'bg-[var(--cf-brand)] text-white border-[var(--cf-brand)] shadow-xs'
+                      : 'bg-[var(--cf-surface-muted)] text-[var(--cf-text-secondary)] border-[var(--cf-border-subtle)] hover:text-[var(--cf-text)] hover:bg-[var(--cf-surface)]'
                   }`}
                 >
                   <span>{tab.label}</span>
@@ -284,10 +284,10 @@ export const NoticeBoard: React.FC = () => {
                   key={cat.value}
                   type="button"
                   onClick={() => setFilters({ ...filters, category: cat.value })}
-                  className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition-all border ${
+                  className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition-colors duration-150 border cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cf-brand)] ${
                     active
-                      ? 'bg-[var(--cf-brand)] text-white border-[var(--cf-brand)]'
-                      : 'bg-[var(--cf-surface-muted)] text-[var(--cf-text-secondary)] border-[var(--cf-border-subtle)] hover:text-[var(--cf-text)]'
+                      ? 'bg-[var(--cf-brand)] text-white border-[var(--cf-brand)] shadow-2xs'
+                      : 'bg-[var(--cf-surface-muted)] text-[var(--cf-text-secondary)] border-[var(--cf-border-subtle)] hover:text-[var(--cf-text)] hover:bg-[var(--cf-surface)]'
                   }`}
                 >
                   {cat.label}
@@ -304,7 +304,7 @@ export const NoticeBoard: React.FC = () => {
             <select
               value={filters.priority || 'all'}
               onChange={(e) => setFilters({ ...filters, priority: e.target.value as NoticePriority | 'all' })}
-              className="h-8 rounded-lg border border-[var(--cf-border)] bg-[var(--cf-surface)] px-2.5 text-xs font-medium text-[var(--cf-text)] focus:border-[var(--cf-brand)] focus:outline-none"
+              className="h-8 rounded-lg border border-[var(--cf-border)] bg-[var(--cf-surface)] px-2.5 text-xs font-medium text-[var(--cf-text)] focus-visible:ring-2 focus-visible:ring-[var(--cf-brand)] focus-visible:border-transparent outline-none cursor-pointer"
             >
               {PRIORITIES.map((p) => (
                 <option key={p.value} value={p.value}>
@@ -333,13 +333,7 @@ export const NoticeBoard: React.FC = () => {
       )}
 
       {/* Loading state */}
-      {isLoading && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-48 rounded-2xl border border-[var(--cf-border)] bg-[var(--cf-surface)] p-6 animate-pulse" />
-          ))}
-        </div>
-      )}
+      {isLoading && <NoticeCardSkeleton count={4} />}
 
       {/* Empty states */}
       {!isLoading && !error && notices.length === 0 && (

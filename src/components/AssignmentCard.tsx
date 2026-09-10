@@ -81,9 +81,9 @@ export default function AssignmentCard({
     }
     if (!hasDueDate) {
       return (
-        <span className="text-[var(--cf-text-tertiary)] font-medium flex items-center gap-1.5">
-          <Calendar className="w-3.5 h-3.5 text-[var(--cf-text-tertiary)]" />
-          No due date
+        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[var(--cf-surface-muted)] text-[var(--cf-text-tertiary)] border border-[var(--cf-border-subtle)] text-[11px] font-mono-meta font-medium">
+          <Calendar className="w-3 h-3 text-[var(--cf-text-tertiary)]" />
+          No deadline
         </span>
       );
     }
@@ -99,7 +99,7 @@ export default function AssignmentCard({
   return (
     <Card
       padding="md"
-      className={`group flex items-start gap-3.5 transition-all duration-150 border rounded-xl ${
+      className={`group flex items-start gap-3.5 transition-all duration-150 border rounded-xl hover:-translate-y-0.5 motion-reduce:hover:translate-y-0 ${
         isCompleted
           ? 'bg-slate-50/70 border-[var(--cf-border-subtle)] opacity-75'
           : isOverdue
@@ -114,13 +114,13 @@ export default function AssignmentCard({
         aria-checked={isCompleted}
         aria-label={isCompleted ? `Mark "${assignment.title}" as incomplete` : `Mark "${assignment.title}" as completed`}
         onClick={handleToggle}
-        className={`mt-0.5 w-5 h-5 shrink-0 rounded border flex items-center justify-center transition-all cursor-pointer ${
+        className={`mt-0.5 w-5 h-5 shrink-0 rounded border flex items-center justify-center transition-all duration-150 active:scale-95 motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cf-brand)] focus-visible:ring-offset-2 cursor-pointer ${
           isCompleted
             ? 'bg-emerald-600 border-emerald-600 text-white'
             : 'border-[var(--cf-border-strong)] hover:border-[var(--cf-brand)] hover:bg-[var(--cf-brand-subtle)] text-transparent hover:text-[var(--cf-brand)]'
         }`}
       >
-        <Check className={`w-3.5 h-3.5 stroke-[3] transition-opacity ${isCompleted ? 'opacity-100' : 'opacity-0 group-hover:opacity-60'}`} />
+        <Check className={`w-3.5 h-3.5 stroke-[3] transition-opacity duration-150 ${isCompleted ? 'opacity-100' : 'opacity-0 group-hover:opacity-60'}`} />
       </button>
 
       {/* Task Content */}
@@ -200,18 +200,18 @@ export default function AssignmentCard({
         <button
           type="button"
           onClick={() => onEdit(assignment)}
-          className="p-1.5 rounded-lg text-[var(--cf-text-tertiary)] hover:text-[var(--cf-brand)] hover:bg-[var(--cf-surface-muted)] transition-colors cursor-pointer"
+          className="p-1.5 rounded-lg text-[var(--cf-text-tertiary)] hover:text-[var(--cf-brand)] hover:bg-[var(--cf-surface-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cf-brand)] transition-colors cursor-pointer"
           title="Edit task"
-          aria-label="Edit task"
+          aria-label={`Edit task "${assignment.title}"`}
         >
           <Edit2 className="w-3.5 h-3.5" />
         </button>
         <button
           type="button"
           onClick={() => onDelete(assignment.id)}
-          className="p-1.5 rounded-lg text-[var(--cf-text-tertiary)] hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+          className="p-1.5 rounded-lg text-[var(--cf-text-tertiary)] hover:text-rose-600 hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cf-danger)] transition-colors cursor-pointer"
           title="Delete task"
-          aria-label="Delete task"
+          aria-label={`Delete task "${assignment.title}"`}
         >
           <Trash2 className="w-3.5 h-3.5" />
         </button>

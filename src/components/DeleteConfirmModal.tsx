@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Button } from './ui/Button';
 
 type DeleteConfirmModalProps = {
@@ -32,8 +32,6 @@ export default function DeleteConfirmModal({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, isDeleting, onClose]);
 
-  if (!isOpen) return null;
-
   const body =
     description ??
     `Are you sure you want to delete ${title}? This action cannot be undone.`;
@@ -59,57 +57,71 @@ export default function DeleteConfirmModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[var(--cf-overlay)] transition-opacity backdrop-blur-xs"
-      role="presentation"
-      onClick={handleClose}
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.96 }}
-        transition={{ duration: 0.18, ease: 'easeOut' }}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="delete-confirm-title"
-        className="w-full max-w-sm rounded-2xl border border-[var(--cf-border)] bg-[var(--cf-surface)] p-6 shadow-[var(--cf-elev-3)]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2
-          id="delete-confirm-title"
-          className="mb-2 font-sans-display text-base font-bold text-[var(--cf-text)]"
+    <AnimatePresence>
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[var(--cf-overlay)] backdrop-blur-xs"
+          role="presentation"
+          onClick={handleClose}
         >
-          Confirm Deletion
-        </h2>
-        <p className="mb-5 text-xs text-[var(--cf-text-secondary)] leading-relaxed">
-          {body}
-        </p>
-
-        {errorMsg && (
-          <div className="mb-4 text-xs text-[var(--cf-danger)] font-medium p-2.5 rounded-xl bg-[var(--cf-danger-subtle)] border border-[var(--cf-danger-border)]">
-            {errorMsg}
-          </div>
-        )}
-
-        <div className="flex justify-end gap-3 pt-2">
-          <Button
-            variant="secondary"
-            onClick={handleClose}
-            disabled={isDeleting}
-            size="sm"
+          <motion.div
+            initial={{ opacity: 0, scale: 0.97 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.97 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-confirm-title"
+            className="w-full max-w-sm rounded-2xl border border-[var(--cf-border)] bg-[var(--cf-surface)] p-6 shadow-[var(--cf-elev-3)]"
+            onClick={(e) => e.stopPropagation()}
           >
-            Cancel
-          </Button>
-          <Button
-            variant="danger"
-            onClick={handleConfirm}
-            disabled={isDeleting}
-            size="sm"
-          >
-            {isDeleting ? 'Deleting...' : 'Delete'}
-          </Button>
+            <h2
+              id="delete-confirm-title"
+              className="mb-2 font-sans-display text-base font-bold text-[var(--cf-text)]"
+            >
+              Confirm Deletion
+            </h2>
+            <p className="mb-5 text-xs text-[var(--cf-text-secondary)] leading-relaxed">
+              {body}
+            </p>
+
+            <AnimatePresence>
+              {errorMsg && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.15 }}
+                  className="mb-4 overflow-hidden"
+                >
+                  <div className="text-xs text-[var(--cf-danger)] font-medium p-2.5 rounded-xl bg-[var(--cf-danger-subtle)] border border-[var(--cf-danger-border)]">
+                    {errorMsg}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button
+                variant="secondary"
+                onClick={handleClose}
+                disabled={isDeleting}
+                size="sm"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={handleConfirm}
+                disabled={isDeleting}
+                size="sm"
+              >
+                {isDeleting ? 'Deleting...' : 'Delete'}
+              </Button>
+            </div>
+          </motion.div>
         </div>
-      </motion.div>
-    </div>
+      )}
+    </AnimatePresence>
   );
 }

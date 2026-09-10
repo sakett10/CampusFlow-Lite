@@ -26,9 +26,20 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
             {label}
           </label>
         )}
-        <input ref={ref} className={inputClasses} {...props} />
+        <input
+          ref={ref}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error && props.id ? `${props.id}-error` : undefined}
+          className={inputClasses}
+          {...props}
+        />
         {error && (
-          <p className="mt-1.5 text-[length:var(--cf-text-caption-size)] font-medium text-[var(--cf-danger)]">{error}</p>
+          <p
+            id={props.id ? `${props.id}-error` : undefined}
+            className="mt-1.5 text-[length:var(--cf-text-caption-size)] font-medium text-[var(--cf-danger)]"
+          >
+            {error}
+          </p>
         )}
       </div>
     );

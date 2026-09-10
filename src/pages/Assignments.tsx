@@ -9,6 +9,8 @@ import DeleteConfirmModal from '../components/DeleteConfirmModal';
 import { Button } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Card } from '../components/ui/Card';
+import { TaskSkeleton } from '../components/ui/Skeleton';
+import { motion, AnimatePresence } from 'motion/react';
 import type { Assignment } from '../lib/types';
 
 type TaskTab = 'today' | 'upcoming' | 'completed';
@@ -163,10 +165,10 @@ export default function Assignments() {
         <button
           type="button"
           onClick={() => setActiveTab('today')}
-          className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+          className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cf-brand)] ${
             activeTab === 'today'
-              ? 'bg-[var(--cf-brand)] text-white shadow-sm'
-              : 'bg-[var(--cf-surface-muted)] text-[var(--cf-text-secondary)] hover:text-[var(--cf-text)] border border-[var(--cf-border-subtle)]'
+              ? 'bg-[var(--cf-brand)] text-white shadow-xs'
+              : 'bg-[var(--cf-surface-muted)] text-[var(--cf-text-secondary)] hover:text-[var(--cf-text)] hover:bg-[var(--cf-surface)] border border-[var(--cf-border-subtle)]'
           }`}
         >
           <span>Today</span>
@@ -182,10 +184,10 @@ export default function Assignments() {
         <button
           type="button"
           onClick={() => setActiveTab('upcoming')}
-          className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+          className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cf-brand)] ${
             activeTab === 'upcoming'
-              ? 'bg-[var(--cf-brand)] text-white shadow-sm'
-              : 'bg-[var(--cf-surface-muted)] text-[var(--cf-text-secondary)] hover:text-[var(--cf-text)] border border-[var(--cf-border-subtle)]'
+              ? 'bg-[var(--cf-brand)] text-white shadow-xs'
+              : 'bg-[var(--cf-surface-muted)] text-[var(--cf-text-secondary)] hover:text-[var(--cf-text)] hover:bg-[var(--cf-surface)] border border-[var(--cf-border-subtle)]'
           }`}
         >
           <span>Upcoming</span>
@@ -201,10 +203,10 @@ export default function Assignments() {
         <button
           type="button"
           onClick={() => setActiveTab('completed')}
-          className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+          className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cf-brand)] ${
             activeTab === 'completed'
-              ? 'bg-[var(--cf-brand)] text-white shadow-sm'
-              : 'bg-[var(--cf-surface-muted)] text-[var(--cf-text-secondary)] hover:text-[var(--cf-text)] border border-[var(--cf-border-subtle)]'
+              ? 'bg-[var(--cf-brand)] text-white shadow-xs'
+              : 'bg-[var(--cf-surface-muted)] text-[var(--cf-text-secondary)] hover:text-[var(--cf-text)] hover:bg-[var(--cf-surface)] border border-[var(--cf-border-subtle)]'
           }`}
         >
           <span>Completed</span>
@@ -220,20 +222,7 @@ export default function Assignments() {
 
       {/* Loading Skeleton */}
       {isLoading ? (
-        <div className="space-y-3" aria-label="Loading tasks">
-          {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="h-20 rounded-2xl border border-[var(--cf-border)] bg-[var(--cf-surface)] p-4 flex items-center gap-4 animate-pulse"
-            >
-              <div className="w-5 h-5 rounded-full bg-[var(--cf-surface-muted)] shrink-0" />
-              <div className="flex-1 space-y-2">
-                <div className="h-4 w-1/3 bg-[var(--cf-surface-muted)] rounded" />
-                <div className="h-3 w-1/2 bg-[var(--cf-surface-muted)] rounded" />
-              </div>
-            </div>
-          ))}
-        </div>
+        <TaskSkeleton count={3} />
       ) : tasks.length === 0 ? (
         /* Entire Task System Empty State */
         <Card padding="lg" className="border-dashed border-[var(--cf-border)] bg-[var(--cf-surface-muted)]/30 p-12 text-center flex flex-col items-center">
@@ -300,16 +289,24 @@ export default function Assignments() {
       ) : (
         /* Task Cards List */
         <div className="space-y-3">
-          {currentTasks.map((task) => (
-            <AssignmentCard
-              key={task.id}
-              assignment={task}
-              course={courses.find((c) => c.id === task.courseId)}
-              onEdit={handleEditClick}
-              onDelete={handleDeleteClick}
-              onToggleComplete={toggleTask}
-            />
-          ))}
+          <AnimatePresence initial={false}>
+            {currentTasks.map((task) => (
+              <motion.div
+                key={task.id}
+                layout="position"
+                exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
+                transition={{ duration: 0.18, ease: 'easeOut' }}
+              >
+                <AssignmentCard
+                  assignment={task}
+                  course={courses.find((c) => c.id === task.courseId)}
+                  onEdit={handleEditClick}
+                  onDelete={handleDeleteClick}
+                  onToggleComplete={toggleTask}
+                />
+              </motion.div>
+            ))}
+          </AnimatePresence>
         </div>
       )}
 

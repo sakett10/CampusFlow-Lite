@@ -10,7 +10,6 @@ import {
   Bookmark,
   Mail,
   FileText,
-  Loader2,
 } from 'lucide-react';
 import { useTasks } from '../hooks/useAssignments';
 import { useNotices } from '../hooks/useNotices';
@@ -23,6 +22,8 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
+import { AnimatedNumber } from '../components/ui/AnimatedNumber';
+import { TaskSkeleton } from '../components/ui/Skeleton';
 import AssignmentModal from '../components/AssignmentModal';
 import AddToTaskModal from '../components/AddToTaskModal';
 
@@ -116,15 +117,15 @@ export default function Dashboard() {
           <p className="mt-1 text-sm text-[var(--cf-text-secondary)]">
             {overdueTasks.length > 0 ? (
               <span className="text-[var(--cf-danger)] font-medium">
-                {overdueTasks.length} overdue task{overdueTasks.length === 1 ? '' : 's'} requiring action ·{' '}
-                {todayTasks.length} due today
+                <AnimatedNumber value={overdueTasks.length} /> overdue task{overdueTasks.length === 1 ? '' : 's'} requiring action ·{' '}
+                <AnimatedNumber value={todayTasks.length} /> due today
               </span>
             ) : todayTasks.length > 0 ? (
               <span>
-                {todayTasks.length} task{todayTasks.length === 1 ? '' : 's'} scheduled for today
+                <AnimatedNumber value={todayTasks.length} /> task{todayTasks.length === 1 ? '' : 's'} scheduled for today
               </span>
             ) : (
-              <span>All tasks on schedule · {upcomingTasks.length} upcoming this week</span>
+              <span>All tasks on schedule · <AnimatedNumber value={upcomingTasks.length} /> upcoming this week</span>
             )}
           </p>
         </div>
@@ -244,7 +245,7 @@ export default function Dashboard() {
                   Today's Tasks
                 </h2>
                 <span className="flex h-5 items-center justify-center rounded-full bg-[var(--cf-surface-muted)] px-2 font-mono text-[11px] font-semibold text-[var(--cf-text-secondary)] border border-[var(--cf-border-subtle)]">
-                  {todayTasks.length}
+                  <AnimatedNumber value={todayTasks.length} />
                 </span>
               </div>
               <Link
@@ -256,9 +257,7 @@ export default function Dashboard() {
             </div>
 
             {tasksLoading ? (
-              <div className="flex h-28 items-center justify-center rounded-xl border border-[var(--cf-border)] bg-[var(--cf-surface)]">
-                <Loader2 className="h-5 w-5 animate-spin text-[var(--cf-brand)]" />
-              </div>
+              <TaskSkeleton count={3} />
             ) : todayTasks.length === 0 ? (
               <Card padding="md" className="border-dashed border-[var(--cf-border)] bg-transparent text-center">
                 <p className="text-xs text-[var(--cf-text-secondary)] font-medium">
@@ -270,14 +269,14 @@ export default function Dashboard() {
                 {todayTasks.map((task) => (
                   <div
                     key={task.id}
-                    className="group flex items-center justify-between gap-3 rounded-xl border border-[var(--cf-border)] bg-[var(--cf-surface)] p-3 transition-all hover:border-[var(--cf-border-strong)] hover:shadow-xs"
+                    className="group flex items-center justify-between gap-3 rounded-xl border border-[var(--cf-border)] bg-[var(--cf-surface)] p-3 transition-all duration-150 hover:border-[var(--cf-border-strong)] hover:shadow-xs hover:-translate-y-0.5 motion-reduce:hover:translate-y-0"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <button
                         type="button"
                         onClick={() => toggleTask(task.id)}
-                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-[var(--cf-border-strong)] hover:border-[var(--cf-brand)] hover:bg-[var(--cf-brand-subtle)] transition-colors cursor-pointer"
-                        aria-label={`Mark ${task.title} as completed`}
+                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-[var(--cf-border-strong)] hover:border-[var(--cf-brand)] hover:bg-[var(--cf-brand-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cf-brand)] transition-colors cursor-pointer"
+                        aria-label={`Mark "${task.title}" as completed`}
                       >
                         <CheckSquare className="h-3.5 w-3.5 text-transparent group-hover:text-[var(--cf-text-tertiary)]" />
                       </button>
@@ -314,15 +313,13 @@ export default function Dashboard() {
                   Upcoming Deadlines
                 </h2>
                 <span className="flex h-5 items-center justify-center rounded-full bg-[var(--cf-surface-muted)] px-2 font-mono text-[11px] font-semibold text-[var(--cf-text-secondary)] border border-[var(--cf-border-subtle)]">
-                  {upcomingTasks.length}
+                  <AnimatedNumber value={upcomingTasks.length} />
                 </span>
               </div>
             </div>
 
             {tasksLoading ? (
-              <div className="flex h-28 items-center justify-center rounded-xl border border-[var(--cf-border)] bg-[var(--cf-surface)]">
-                <Loader2 className="h-5 w-5 animate-spin text-[var(--cf-brand)]" />
-              </div>
+              <TaskSkeleton count={3} />
             ) : upcomingTasks.length === 0 ? (
               <Card padding="md" className="border-dashed border-[var(--cf-border)] bg-transparent text-center">
                 <p className="text-xs text-[var(--cf-text-secondary)] font-medium">
@@ -336,7 +333,7 @@ export default function Dashboard() {
                   return (
                     <div
                       key={task.id}
-                      className="flex items-center justify-between gap-3 p-3 transition-colors hover:bg-[var(--cf-surface-muted)]/50"
+                      className="flex items-center justify-between gap-3 p-3 transition-colors duration-150 hover:bg-[var(--cf-surface-muted)]/50"
                     >
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-[var(--cf-text)] truncate">{task.title}</p>
@@ -376,9 +373,7 @@ export default function Dashboard() {
           </div>
 
           {noticesLoading ? (
-            <div className="flex h-48 items-center justify-center rounded-xl border border-[var(--cf-border)] bg-[var(--cf-surface)]">
-              <Loader2 className="h-5 w-5 animate-spin text-[var(--cf-brand)]" />
-            </div>
+            <TaskSkeleton count={3} />
           ) : recentNotices.length === 0 ? (
             <Card padding="md" className="border-dashed border-[var(--cf-border)] bg-transparent text-center">
               <EmptyState
@@ -392,7 +387,7 @@ export default function Dashboard() {
               {recentNotices.map((notice) => (
                 <div
                   key={notice.id}
-                  className="flex flex-col gap-2.5 rounded-xl border border-[var(--cf-border)] bg-[var(--cf-surface)] p-3.5 transition-all hover:border-[var(--cf-border-strong)] hover:shadow-xs"
+                  className="flex flex-col gap-2.5 rounded-xl border border-[var(--cf-border)] bg-[var(--cf-surface)] p-3.5 transition-all duration-150 hover:border-[var(--cf-border-strong)] hover:shadow-xs hover:-translate-y-0.5 motion-reduce:hover:translate-y-0"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[11px] font-mono font-semibold uppercase tracking-wider text-[var(--cf-text-secondary)]">
@@ -419,7 +414,7 @@ export default function Dashboard() {
                       {notice.sourceProvider === 'gmail' ? 'Via Gmail' : 'Official Circular'}
                     </span>
                     {notice.isConverted ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
                         <CheckSquare className="w-3 h-3 text-emerald-600" />
                         Converted
                       </span>
@@ -429,7 +424,7 @@ export default function Dashboard() {
                         size="sm"
                         onClick={() => handleOpenNoticeToTask(notice)}
                         leftIcon={<CheckSquare className="w-3.5 h-3.5 text-[var(--cf-text-secondary)]" />}
-                        className="text-xs font-semibold px-2 py-1 h-7 text-[var(--cf-text)] hover:bg-[var(--cf-surface-muted)]"
+                        className="text-xs font-semibold px-2 py-1 h-7 text-[var(--cf-text)] hover:bg-[var(--cf-surface-muted)] focus-visible:ring-1 focus-visible:ring-[var(--cf-brand)]"
                       >
                         Convert to Task
                       </Button>

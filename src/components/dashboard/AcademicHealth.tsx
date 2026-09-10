@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { BookOpen, CheckCircle, ChevronRight } from 'lucide-react';
 import { Card } from '../ui/Card';
+import { AnimatedNumber } from '../ui/AnimatedNumber';
 import type { Course } from '../../lib/types';
 import type { AssignmentStats } from '../../lib/dashboardUtils';
 
@@ -48,7 +49,11 @@ export default function AcademicHealth({
               Overall Attendance
             </span>
             <span className="font-mono-meta text-[length:var(--cf-text-title-size)] font-[number:var(--cf-text-title-weight)] tracking-tight text-[var(--cf-text)]">
-              {hasAttendanceData ? `${overallAttendance}%` : '—'}
+              {hasAttendanceData ? (
+                <AnimatedNumber value={overallAttendance} formatValue={(v) => `${Math.round(v)}%`} />
+              ) : (
+                '—'
+              )}
             </span>
           </div>
           <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--cf-surface-muted)] border border-[var(--cf-border-subtle)]">
@@ -78,7 +83,11 @@ export default function AcademicHealth({
               Tasks Completed
             </span>
             <span className="font-mono-meta text-[length:var(--cf-text-title-size)] font-[number:var(--cf-text-title-weight)] tracking-tight text-[var(--cf-text)]">
-              {hasAssignmentData ? `${assignmentProgress}%` : '—'}
+              {hasAssignmentData ? (
+                <AnimatedNumber value={assignmentProgress} formatValue={(v) => `${Math.round(v)}%`} />
+              ) : (
+                '—'
+              )}
             </span>
           </div>
           <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--cf-surface-muted)] border border-[var(--cf-border-subtle)]">
@@ -100,13 +109,13 @@ export default function AcademicHealth({
         <div className="flex flex-col gap-1 rounded-[var(--cf-radius-md)] bg-[var(--cf-surface-muted)] p-3 border border-transparent transition-colors group-hover:bg-[var(--cf-surface)] group-hover:border-[var(--cf-border)]">
           <span className="text-[length:var(--cf-text-micro-size)] font-[number:var(--cf-text-micro-weight)] uppercase tracking-wider text-[var(--cf-text-secondary)]">Courses at risk</span>
           <span className={`font-mono-meta text-[length:var(--cf-text-title-size)] font-bold ${attendanceWarningsCount > 0 ? 'text-[var(--cf-danger)]' : 'text-[var(--cf-text)]'}`}>
-            {attendanceWarningsCount}
+            <AnimatedNumber value={attendanceWarningsCount} />
           </span>
         </div>
         <div className="flex flex-col gap-1 rounded-[var(--cf-radius-md)] bg-[var(--cf-surface-muted)] p-3 border border-transparent transition-colors group-hover:bg-[var(--cf-surface)] group-hover:border-[var(--cf-border)]">
           <span className="text-[length:var(--cf-text-micro-size)] font-[number:var(--cf-text-micro-weight)] uppercase tracking-wider text-[var(--cf-text-secondary)]">Pending Tasks</span>
           <span className="font-mono-meta text-[length:var(--cf-text-title-size)] font-bold text-[var(--cf-text)]">
-            {assignmentStats.pending + assignmentStats.inProgress}
+            <AnimatedNumber value={assignmentStats.pending + assignmentStats.inProgress} />
           </span>
         </div>
       </div>
