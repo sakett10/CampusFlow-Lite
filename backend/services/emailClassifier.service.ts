@@ -1,6 +1,9 @@
 import type { NoticeCategory } from '../types.js';
 
+export type ClassificationOutcome = 'academic' | 'personal' | 'uncertain';
+
 export interface EmailClassificationResult {
+  outcome: ClassificationOutcome;
   isAcademic: boolean;
   isPersonal: boolean;
   isPromotionalOrNewsletter: boolean;
@@ -102,6 +105,8 @@ const PERSONAL_CONVERSATION_PATTERNS = [
   'found umbrella',
   'lunch today',
   'dinner tonight',
+  'free for lunch',
+  'free for dinner',
   'party tonight',
   'where are you',
   'call me when free',
@@ -141,6 +146,9 @@ const ACADEMIC_SENDER_PATTERNS = [
   'group, chennai campus',
   '@vitstudent.ac.in',
   '@vit.ac.in',
+  '@chennai.vit.ac.in',
+  '@vitap.ac.in',
+  '@vitbhopal.ac.in',
   'counselling',
   'admissions',
   'registration',
@@ -150,6 +158,7 @@ const ACADEMIC_SENDER_PATTERNS = [
 
 // 6. Strong academic topics in subject/content
 const ACADEMIC_TOPIC_SIGNALS = [
+  'circular',
   'exam',
   'fat',
   'cat 1',
@@ -207,12 +216,15 @@ export function classifyEmail(message: {
 }): EmailClassificationResult {
   const sender = (message.sender || message.from || '').toLowerCase();
   const subject = (message.subject || '').toLowerCase();
-  const text = `${subject} ${(message.bodyText || message.body || message.snippet || '').toLowerCase()}`;
+  const rawBody = (message.bodyText || message.body || '').trim();
+  const hasBody = rawBody.length > 0;
+  const text = `${subject} ${(rawBody || message.snippet || '').toLowerCase()}`;
 
   // Step 1: Check known promotional / marketing / newsletter domains
   for (const domain of NON_ACADEMIC_DOMAIN_PATTERNS) {
     if (sender.includes(domain)) {
       return {
+        outcome: 'personal',
         isAcademic: false,
         isPersonal: false,
         isPromotionalOrNewsletter: true,
@@ -227,6 +239,7 @@ export function classifyEmail(message: {
   for (const kw of PROMOTIONAL_SUBJECT_KEYWORDS) {
     if (subject.includes(kw)) {
       return {
+        outcome: 'personal',
         isAcademic: false,
         isPersonal: false,
         isPromotionalOrNewsletter: true,
@@ -241,6 +254,7 @@ export function classifyEmail(message: {
   for (const pat of PERSONAL_VERIFICATION_PATTERNS) {
     if (subject.includes(pat) || text.includes(pat)) {
       return {
+        outcome: 'personal',
         isAcademic: false,
         isPersonal: true,
         isPromotionalOrNewsletter: false,
@@ -253,8 +267,9 @@ export function classifyEmail(message: {
 
   // Step 4: Check student personal casual conversations (even if sent from university domain)
   for (const pat of PERSONAL_CONVERSATION_PATTERNS) {
-    if (subject.includes(pat)) {
+    if (subject.includes(pat) || text.includes(pat)) {
       return {
+        outcome: 'personal',
         isAcademic: false,
         isPersonal: true,
         isPromotionalOrNewsletter: false,
@@ -268,6 +283,7 @@ export function classifyEmail(message: {
   // Handle missing sender header (e.g. test mock messages)
   if (!sender) {
     return {
+      outcome: 'academic',
       isAcademic: true,
       isPersonal: false,
       isPromotionalOrNewsletter: false,
@@ -302,6 +318,7 @@ export function classifyEmail(message: {
     }
 
     return {
+      outcome: 'academic',
       isAcademic: true,
       isPersonal: false,
       isPromotionalOrNewsletter: false,
@@ -311,9 +328,23 @@ export function classifyEmail(message: {
     };
   }
 
-  // Step 6: If from academic sender without overt topic match, check if general campus announcement
+  // Step 6: If from academic sender without overt topic match
   if (hasAcademicSender) {
+    // If body text has not been evaluated yet, mark as uncertain so second-stage can inspect body
+    if (!hasBody) {
+      return {
+        outcome: 'uncertain',
+        isAcademic: false,
+        isPersonal: false,
+        isPromotionalOrNewsletter: false,
+        reason: 'Official academic sender but specific academic topic not detected in metadata/snippet; requires second-stage body evaluation',
+        category: 'administrative',
+        confidence: 'low',
+      };
+    }
+
     return {
+      outcome: 'academic',
       isAcademic: true,
       isPersonal: false,
       isPromotionalOrNewsletter: false,
@@ -323,8 +354,57 @@ export function classifyEmail(message: {
     };
   }
 
-  // Step 7: Default: not clearly academic -> treat as personal / non-academic to protect privacy
+  // Step 7: If non-academic authority sender but academic topic present in subject/snippet
+  if (hasAcademicTopic) {
+    if (!hasBody) {
+      return {
+        outcome: 'uncertain',
+        isAcademic: false,
+        isPersonal: false,
+        isPromotionalOrNewsletter: false,
+        reason: 'Academic topic detected but sender is not a verified academic authority; requires second-stage body evaluation',
+        category: 'general',
+        confidence: 'low',
+      };
+    }
+
+    // With body provided, verify it is not personal casual conversation
+    for (const pat of PERSONAL_CONVERSATION_PATTERNS) {
+      if (text.includes(pat)) {
+        return {
+          outcome: 'personal',
+          isAcademic: false,
+          isPersonal: true,
+          isPromotionalOrNewsletter: false,
+          reason: `Matches personal conversation pattern in body: '${pat}'`,
+          category: 'general',
+          confidence: 'high',
+        };
+      }
+    }
+
+    if (
+      sender.includes('@vitstudent.ac.in') ||
+      sender.includes('@vit.ac.in') ||
+      sender.includes('@chennai.vit.ac.in') ||
+      sender.includes('@vitap.ac.in') ||
+      sender.includes('@vitbhopal.ac.in')
+    ) {
+      return {
+        outcome: 'academic',
+        isAcademic: true,
+        isPersonal: false,
+        isPromotionalOrNewsletter: false,
+        reason: 'Academic topic from university student/campus sender',
+        category: 'general',
+        confidence: 'medium',
+      };
+    }
+  }
+
+  // Step 8: Default: not clearly academic -> treat as personal / non-academic to protect privacy
   return {
+    outcome: 'personal',
     isAcademic: false,
     isPersonal: true,
     isPromotionalOrNewsletter: false,

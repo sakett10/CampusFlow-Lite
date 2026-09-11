@@ -257,8 +257,12 @@ describe('Production Bug Reproduction & Security Regression Suite', () => {
     const { rows: emailRows } = await pool.query(
       "SELECT * FROM campus_emails WHERE source_message_id = 'msg_personal_cert'",
     );
-    expect(emailRows).toHaveLength(1);
-    expect(emailRows[0].analysis_status).toBe('ignored_personal');
+    expect(emailRows).toHaveLength(0);
+
+    const { rows: processedRows } = await pool.query(
+      "SELECT * FROM processed_gmail_messages WHERE gmail_message_id = 'msg_personal_cert'",
+    );
+    expect(processedRows).toHaveLength(1);
 
     const { rows: noticeRows } = await pool.query(
       "SELECT * FROM notices WHERE source_message_id = 'msg_personal_cert'",

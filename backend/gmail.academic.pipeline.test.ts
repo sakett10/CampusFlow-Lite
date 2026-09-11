@@ -140,8 +140,10 @@ describe('Academic Gmail Pipeline & Deadline Generation Regression Suite (12 Sce
     expect(res.body.tasksGenerated).toBe(0);
 
     const { rows: emailRows } = await pool.query('SELECT * FROM campus_emails WHERE source_message_id = $1', ['msg_promo_asics']);
-    expect(emailRows).toHaveLength(1);
-    expect(emailRows[0].analysis_status).toBe('ignored_personal');
+    expect(emailRows).toHaveLength(0);
+
+    const { rows: processedRows } = await pool.query('SELECT * FROM processed_gmail_messages WHERE gmail_message_id = $1', ['msg_promo_asics']);
+    expect(processedRows).toHaveLength(1);
 
     const { rows: taskRows } = await pool.query('SELECT * FROM assignments');
     expect(taskRows).toHaveLength(0);
@@ -178,7 +180,10 @@ describe('Academic Gmail Pipeline & Deadline Generation Regression Suite (12 Sce
     expect(res.body.noticesCreated).toBe(0);
 
     const { rows: emailRows } = await pool.query('SELECT * FROM campus_emails WHERE source_message_id = $1', ['msg_fresher_cert']);
-    expect(emailRows[0].analysis_status).toBe('ignored_personal');
+    expect(emailRows).toHaveLength(0);
+
+    const { rows: processedRows } = await pool.query('SELECT * FROM processed_gmail_messages WHERE gmail_message_id = $1', ['msg_fresher_cert']);
+    expect(processedRows).toHaveLength(1);
   });
 
   // Scenario 4: Casual student conversation is ignored

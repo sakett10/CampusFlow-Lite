@@ -340,8 +340,8 @@ describe('Phase C3.5: Automatic Gmail Ingestion, Notice Feed Integration & Notif
             snippet: `Please upload ${item?.doc}`,
             payload: {
               headers: [
-                { name: 'From', value: 'no-reply@vit.ac.in' },
-                { name: 'Subject', value: 'Fresher - Certificate Verification' },
+                { name: 'From', value: 'cdc@vit.ac.in' },
+                { name: 'Subject', value: 'Placement Drive Update' },
               ],
             },
           },
@@ -616,9 +616,15 @@ describe('Phase C3.5: Automatic Gmail Ingestion, Notice Feed Integration & Notif
       const { rows: pendingRows } = await pool.query("SELECT * FROM notices WHERE status = 'pending'");
       expect(pendingRows).toHaveLength(0);
 
-      // But both raw emails are safely stored in campus_emails
+      // Legitimate campus-wide notice is stored in campus_emails; personal candidate email is zero-persisted
       const { rows: emailRows } = await pool.query('SELECT * FROM campus_emails');
-      expect(emailRows).toHaveLength(2);
+      expect(emailRows).toHaveLength(1);
+      expect(emailRows[0].source_message_id).toBe('msg_sports_event');
+
+      const { rows: processedRows } = await pool.query(
+        "SELECT * FROM processed_gmail_messages WHERE gmail_message_id = 'msg_candidate_doc'",
+      );
+      expect(processedRows).toHaveLength(1);
 
       // Verify Campus Feed for student
       const studentFeed = await storageService.getAll('student_user_1');

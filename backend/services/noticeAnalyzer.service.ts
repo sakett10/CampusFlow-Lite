@@ -6,6 +6,7 @@ import type {
 
 import { validateNoticeCandidate } from './noticeValidator.js';
 import { classifyEmail } from './emailClassifier.service.js';
+import { sanitizeEmailForAI } from './emailSanitizer.service.js';
 
 export function extractHeuristicCandidate(
   message: StructuredGmailMessage,
@@ -41,9 +42,8 @@ export function extractHeuristicCandidate(
     priority = 'important';
   }
 
-  const cleanBody = (message.bodyText || message.snippet || message.subject || 'Campus Notice')
-    .replace(/\s+/g, ' ')
-    .trim();
+  const rawBody = message.bodyText || message.snippet || message.subject || 'Campus Notice';
+  const cleanBody = sanitizeEmailForAI(rawBody);
   const summary = cleanBody.length > 250 ? cleanBody.slice(0, 247) + '...' : cleanBody;
 
   return {
@@ -171,7 +171,7 @@ EMAIL SENDER: ${message.sender || 'Unknown Sender'}
 EMAIL DATE: ${message.date || 'Unknown Date'}
 EMAIL CONTENT:
 """
-${message.bodyText || message.snippet || ''}
+${sanitizeEmailForAI(message.bodyText || message.snippet || '')}
 """
 `;
 

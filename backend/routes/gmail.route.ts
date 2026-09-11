@@ -299,12 +299,7 @@ router.get('/messages', requireAuth(), async (req, res) => {
 
     const rawMessages = response.data.messages || [];
 
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`[Gmail messages.list] Retrieved ${rawMessages.length} message references:`);
-      rawMessages.forEach((m, index) => {
-        console.log(`  [${index}] id: ${m.id}, threadId: ${m.threadId}`);
-      });
-    }
+    // No routine logging of message IDs or thread IDs to prevent PII leakage
 
     const formattedMessages = rawMessages
       .filter((m) => m && typeof m.id === 'string' && m.id.trim())
@@ -381,11 +376,7 @@ router.get('/messages/:messageId', requireAuth(), async (req, res) => {
       format: 'full',
     });
 
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(
-        `[Gmail messages.get] requestedId: ${messageId}, returnedId: ${response.data.id}, threadId: ${response.data.threadId}, matches: ${messageId === response.data.id}`,
-      );
-    }
+    // No routine logging of message IDs or thread IDs
 
     const messageDetails = parseGmailMessageDetails(
       response.data,

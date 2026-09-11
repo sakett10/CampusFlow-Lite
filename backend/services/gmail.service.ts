@@ -593,38 +593,32 @@ export const syncGmailMessagesForUser = async (
       });
 
       const parsedDetails = parseGmailMessageDetails(messageResponse.data, rawMsg.id);
-      const classification = classifyEmail(parsedDetails);
+
+      // Stage 1 classification: evaluate with metadata + snippet (no full body)
+      let classification = classifyEmail({
+        from: parsedDetails.from,
+        subject: parsedDetails.subject,
+        snippet: parsedDetails.snippet,
+      });
+
+      // If Stage 1 is uncertain, evaluate with body text in Stage 2
+      if (classification.outcome === 'uncertain') {
+        classification = classifyEmail({
+          from: parsedDetails.from,
+          subject: parsedDetails.subject,
+          snippet: parsedDetails.snippet,
+          bodyText: parsedDetails.bodyText || parsedDetails.body || parsedDetails.snippet,
+        });
+      }
 
       // Filter out non-academic / personal / promotional emails
-      const shouldIgnore = !isAuthorizedReviewer
-        ? !classification.isAcademic
-        : classification.isPromotionalOrNewsletter;
-
-      const authoritativeDate = parsedDetails.internalDate
-        ? new Date(Number(parsedDetails.internalDate)).toISOString()
-        : parsedDetails.date && !Number.isNaN(new Date(parsedDetails.date).getTime())
-        ? new Date(parsedDetails.date).toISOString()
-        : new Date().toISOString();
+      const isPersonalOrPromo = !classification.isAcademic || classification.outcome === 'personal';
+      const shouldIgnore = isPersonalOrPromo;
 
       if (shouldIgnore) {
-        await campusEmailsService.persistEmail({
-          userId,
-          sourceAccountEmail: conn.google_email,
-          sourceMessageId: rawMsg.id,
-          sourceThreadId: parsedDetails.threadId,
-          senderEmail: parsedDetails.from,
-          senderName: parsedDetails.from,
-          subject: parsedDetails.subject,
-          receivedAt: authoritativeDate,
-          bodyText: parsedDetails.body || parsedDetails.bodyText || parsedDetails.snippet,
-          snippet: parsedDetails.snippet,
-        });
-        await campusEmailsService.markIgnoredPersonal(
-          userId,
-          conn.google_email,
-          rawMsg.id,
-          classification.reason,
-        );
+        // Personal Email Zero-Persistence:
+        // Non-academic and personal emails are NEVER inserted into campus_emails.
+        // Only mark as processed in processed_gmail_messages for deduplication.
         await markGmailMessageAsProcessed(userId, rawMsg.id);
         ignoredMessages++;
         processed++;
@@ -633,6 +627,12 @@ export const syncGmailMessagesForUser = async (
 
       // Verified academic email!
       relevantAcademicMessages++;
+      const authoritativeDate = parsedDetails.internalDate
+        ? new Date(Number(parsedDetails.internalDate)).toISOString()
+        : parsedDetails.date && !Number.isNaN(new Date(parsedDetails.date).getTime())
+        ? new Date(parsedDetails.date).toISOString()
+        : new Date().toISOString();
+
       await campusEmailsService.persistEmail({
         userId,
         sourceAccountEmail: conn.google_email,
@@ -704,7 +704,7 @@ export const syncGmailMessagesForUser = async (
           );
         } else {
           console.error(
-            `AI analysis failed for message ${rawMsg.id}, but email remains stored:`,
+            'AI analysis failed for academic message, but email remains stored:',
             analysisErr instanceof Error ? analysisErr.message : String(analysisErr),
           );
           await campusEmailsService.updateAnalysisFailure(
@@ -723,7 +723,7 @@ export const syncGmailMessagesForUser = async (
       processed++;
     } catch (msgErr) {
       console.error(
-        `Gmail fetch/persistence failed for message ${rawMsg.id}:`,
+        'Gmail sync message processing failed:',
         msgErr instanceof Error ? msgErr.message : String(msgErr),
       );
 

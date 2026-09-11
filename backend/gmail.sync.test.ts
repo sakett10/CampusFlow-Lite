@@ -457,9 +457,12 @@ describe('Gmail Sync Foundation (Phase C1 + C3 Automatic Notice Pipeline)', () =
 
       expect(syncRes.status).toBe(200);
 
-      // Verify email was persisted into campus_emails for audit
+      // Verify email was zero-persisted (not stored in campus_emails)
       const { rows: emailRows } = await pool.query("SELECT * FROM campus_emails WHERE source_message_id = 'msg_fresher_cert_1'");
-      expect(emailRows).toHaveLength(1);
+      expect(emailRows).toHaveLength(0);
+
+      const { rows: processedRows } = await pool.query("SELECT * FROM processed_gmail_messages WHERE gmail_message_id = 'msg_fresher_cert_1'");
+      expect(processedRows).toHaveLength(1);
 
       // Verify it was NOT inserted into notices table
       const { rows: noticeRows } = await pool.query("SELECT * FROM notices WHERE source_message_id = 'msg_fresher_cert_1'");
