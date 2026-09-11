@@ -15,22 +15,35 @@ import { clerkAuth, requireAuthMiddleware } from './middleware/requireAuth.js';
 
 const app = express();
 
-const envOrigins = (process.env.ALLOWED_ORIGINS || '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
+export const normalizeOrigin = (url?: string | null): string => {
+  if (!url) return '';
+  return url.trim().replace(/\/+$/, '');
+};
 
-const allowedOrigins = Array.from(
-  new Set(
-    [
-      process.env.FRONTEND_URL,
-      ...envOrigins,
-      'http://localhost:5173',
-      'http://localhost:3000',
-      'http://localhost:4173',
-    ].filter(Boolean) as string[],
-  ),
-);
+export function getAllowedOrigins(): string[] {
+  const envOrigins = (process.env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((s) => normalizeOrigin(s))
+    .filter(Boolean);
+
+  return Array.from(
+    new Set(
+      [
+        normalizeOrigin(process.env.FRONTEND_URL),
+        ...envOrigins,
+        'http://localhost:5173',
+        'http://localhost:3000',
+        'http://localhost:4173',
+      ].filter(Boolean),
+    ),
+  );
+}
+
+export function isOriginAllowed(origin?: string | null): boolean {
+  const cleanOrigin = normalizeOrigin(origin);
+  if (!cleanOrigin) return true;
+  return getAllowedOrigins().includes(cleanOrigin);
+}
 
 app.use(
   cors({
@@ -38,7 +51,7 @@ app.use(
       if (
         !origin ||
         process.env.NODE_ENV === 'test' ||
-        allowedOrigins.includes(origin)
+        isOriginAllowed(origin)
       ) {
         return callback(null, true);
       }
