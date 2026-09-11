@@ -1,6 +1,7 @@
 import { google } from 'googleapis';
 import jwt from 'jsonwebtoken';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
+import type { PoolClient } from 'pg';
 import { pool } from '../db.js';
 import type { GmailSyncStats, StructuredGmailMessage, NoticeCandidate, NoticeCategory, NoticePriority } from '../types.js';
 
@@ -440,10 +441,63 @@ export async function reclassifyExistingCampusEmails(userId: string): Promise<{
   return { reclassifiedCount, tasksGenerated, ignoredCount };
 }
 
+/**
+ * Derives a deterministic pair of 32-bit signed integers from a userId for PostgreSQL
+ * 2-key advisory locking: pg_try_advisory_lock(int4, int4) / pg_advisory_lock(int4, int4).
+ * This ensures deterministic, collision-resistant, parameterized lock identification across
+ * multiple server/Vercel instances without string concatenation in SQL.
+ */
+export function deriveAdvisoryLockKeys(userId: string): [number, number] {
+  const hash = createHash('sha256').update(userId).digest();
+  return [hash.readInt32BE(0), hash.readInt32BE(4)];
+}
+
+/**
+ * Attempts to acquire an advisory lock for a user on a dedicated connection.
+ * If nonBlocking is true, uses pg_try_advisory_lock (returns false immediately if already locked).
+ * If nonBlocking is false, uses pg_advisory_lock (waits until acquired).
+ */
+export async function acquireUserAdvisoryLock(
+  client: PoolClient,
+  userId: string,
+  nonBlocking = false,
+): Promise<boolean> {
+  const [k1, k2] = deriveAdvisoryLockKeys(userId);
+  if (nonBlocking) {
+    const { rows } = await client.query<{ locked: boolean }>(
+      'SELECT pg_try_advisory_lock($1, $2) AS locked',
+      [k1, k2],
+    );
+    return Boolean(rows[0]?.locked);
+  }
+  await client.query('SELECT pg_advisory_lock($1, $2)', [k1, k2]);
+  return true;
+}
+
+/**
+ * Releases the session-scoped advisory lock for a user on a dedicated connection.
+ */
+export async function releaseUserAdvisoryLock(client: PoolClient, userId: string): Promise<boolean> {
+  const [k1, k2] = deriveAdvisoryLockKeys(userId);
+  try {
+    const { rows } = await client.query<{ unlocked: boolean }>(
+      'SELECT pg_advisory_unlock($1, $2) AS unlocked',
+      [k1, k2],
+    );
+    return Boolean(rows[0]?.unlocked);
+  } catch (err) {
+    console.warn(`Failed to unlock advisory lock for user ${userId}:`, err);
+    return false;
+  }
+}
+
 export interface GmailSyncOptions {
   query?: string;
   syncHistorical?: boolean;
 }
+
+// Local in-memory set kept as a lightweight single-process optimization
+const activeSyncUsers = new Set<string>();
 
 export const syncGmailMessagesForUser = async (
   userId: string,
@@ -451,7 +505,56 @@ export const syncGmailMessagesForUser = async (
   isReviewer?: boolean,
   options?: GmailSyncOptions,
 ): Promise<GmailSyncStats> => {
-  const { rows } = await pool.query(
+  // Local fast-path optimization
+  if (activeSyncUsers.has(userId)) {
+    return {
+      checked: 0,
+      newMessages: 0,
+      skipped: 0,
+      processed: 0,
+      failed: 0,
+      emailsPersisted: 0,
+      analysesFailed: 0,
+      noticesCreated: 0,
+      pendingNoticesCount: 0,
+      relevantAcademicMessages: 0,
+      ignoredMessages: 0,
+      deadlineCandidatesGenerated: 0,
+      tasksGenerated: 0,
+      inProgress: true,
+      message: 'Sync already in progress for this user',
+    };
+  }
+
+  // Database-authoritative advisory lock acquisition on a dedicated connection
+  const lockClient = await pool.connect();
+  let lockAcquired = false;
+
+  try {
+    lockAcquired = await acquireUserAdvisoryLock(lockClient, userId, true);
+    if (!lockAcquired) {
+      return {
+        checked: 0,
+        newMessages: 0,
+        skipped: 0,
+        processed: 0,
+        failed: 0,
+        emailsPersisted: 0,
+        analysesFailed: 0,
+        noticesCreated: 0,
+        pendingNoticesCount: 0,
+        relevantAcademicMessages: 0,
+        ignoredMessages: 0,
+        deadlineCandidatesGenerated: 0,
+        tasksGenerated: 0,
+        inProgress: true,
+        message: 'Sync already in progress for this user',
+      };
+    }
+
+    activeSyncUsers.add(userId);
+
+    const { rows } = await pool.query(
     `
     SELECT id, google_email, access_token, refresh_token, expiry_date
     FROM gmail_connections
@@ -738,19 +841,128 @@ export const syncGmailMessagesForUser = async (
     }
   }
 
-  return {
-    checked,
-    newMessages,
-    skipped,
-    processed,
-    failed,
-    emailsPersisted,
-    analysesFailed,
-    noticesCreated,
-    pendingNoticesCount,
-    relevantAcademicMessages,
-    ignoredMessages,
-    deadlineCandidatesGenerated,
-    tasksGenerated,
-  };
+    return {
+      checked,
+      newMessages,
+      skipped,
+      processed,
+      failed,
+      emailsPersisted,
+      analysesFailed,
+      noticesCreated,
+      pendingNoticesCount,
+      relevantAcademicMessages,
+      ignoredMessages,
+      deadlineCandidatesGenerated,
+      tasksGenerated,
+    };
+  } finally {
+    activeSyncUsers.delete(userId);
+    if (lockAcquired) {
+      await releaseUserAdvisoryLock(lockClient, userId);
+    }
+    lockClient.release();
+  }
 };
+
+export interface DisconnectGmailResult {
+  success: boolean;
+  message: string;
+  purged: boolean;
+}
+
+export async function disconnectGmailForUser(
+  userId: string,
+  options?: { purgeData?: boolean },
+): Promise<DisconnectGmailResult> {
+  const purgeData = options?.purgeData === true;
+
+  // Dedicated connection to acquire and hold the PostgreSQL advisory lock across the entire disconnect
+  const lockClient = await pool.connect();
+  let lockAcquired = false;
+
+  try {
+    // Acquire the same advisory lock held during sync (blocking wait to coordinate safely across instances)
+    await acquireUserAdvisoryLock(lockClient, userId, false);
+    lockAcquired = true;
+
+    // 1. Query the connection by authenticated userId under the advisory lock
+    const { rows } = await lockClient.query(
+      'SELECT access_token, refresh_token FROM gmail_connections WHERE user_id = $1',
+      [userId],
+    );
+
+    if (rows.length > 0) {
+      const rawRefreshToken = rows[0].refresh_token;
+      const rawAccessToken = rows[0].access_token;
+
+      let decryptedRefreshToken: string | null = null;
+      let decryptedAccessToken: string | null = null;
+
+      if (rawRefreshToken) {
+        try {
+          const res = decryptToken(rawRefreshToken);
+          decryptedRefreshToken = res.text || null;
+        } catch (err) {
+          console.warn('Failed to decrypt refresh token for revocation:', err);
+        }
+      }
+
+      if (rawAccessToken) {
+        try {
+          const res = decryptToken(rawAccessToken);
+          decryptedAccessToken = res.text || null;
+        } catch (err) {
+          console.warn('Failed to decrypt access token for revocation:', err);
+        }
+      }
+
+      // Prefer refresh_token, fall back to access_token
+      const tokenToRevoke = decryptedRefreshToken || decryptedAccessToken;
+
+      if (tokenToRevoke) {
+        try {
+          await gmailOAuth2Client.revokeToken(tokenToRevoke);
+        } catch (revokeError) {
+          // Revocation failure must not prevent local cleanup
+          console.warn(
+            'Google OAuth token revocation warning:',
+            revokeError instanceof Error ? revokeError.message : revokeError,
+          );
+        }
+      }
+    }
+
+    // 2. Perform local database cleanup in an atomic transaction
+    try {
+      await lockClient.query('BEGIN');
+
+      await lockClient.query('DELETE FROM gmail_connections WHERE user_id = $1', [userId]);
+
+      if (purgeData) {
+        await lockClient.query('DELETE FROM campus_emails WHERE user_id = $1', [userId]);
+        await lockClient.query('DELETE FROM processed_gmail_messages WHERE user_id = $1', [userId]);
+      }
+
+      await lockClient.query('COMMIT');
+    } catch (dbError) {
+      try {
+        await lockClient.query('ROLLBACK');
+      } catch {
+        // Ignore rollback failure if connection was severed
+      }
+      throw dbError;
+    }
+
+    return {
+      success: true,
+      message: 'Gmail disconnected successfully',
+      purged: purgeData,
+    };
+  } finally {
+    if (lockAcquired) {
+      await releaseUserAdvisoryLock(lockClient, userId);
+    }
+    lockClient.release();
+  }
+}

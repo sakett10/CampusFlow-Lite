@@ -14,6 +14,7 @@ export interface GmailAuthUrlResponse {
 export interface GmailDisconnectResponse {
   success: boolean;
   message: string;
+  purged?: boolean;
 }
 
 export const gmailApi = {
@@ -56,12 +57,16 @@ export const gmailApi = {
   /**
    * Disconnect and revoke Gmail integration for current user
    */
-  disconnect: async (token: string): Promise<GmailDisconnectResponse> => {
+  disconnect: async (token: string, options?: { purgeData?: boolean }): Promise<GmailDisconnectResponse> => {
     const res = await fetch('/api/gmail/disconnect', {
       method: 'POST',
       headers: {
+        'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
+      body: JSON.stringify({
+        purgeData: Boolean(options?.purgeData),
+      }),
     });
 
     if (!res.ok) {

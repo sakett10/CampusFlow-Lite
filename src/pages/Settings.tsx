@@ -40,6 +40,7 @@ export default function Settings() {
   });
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
   const [isDisconnectModalOpen, setIsDisconnectModalOpen] = useState(false);
+  const [purgeData, setPurgeData] = useState(false);
   const [gmailConnected, setGmailConnected] = useState(false);
   const [gmailEmail, setGmailEmail] = useState<string | null>(null);
   const [gmailLoading, setGmailLoading] = useState(false);
@@ -217,15 +218,18 @@ export default function Settings() {
       const token = await getToken();
       if (!token) throw new Error('Authentication required');
 
-      await gmailApi.disconnect(token);
+      const res = await gmailApi.disconnect(token, { purgeData });
       setGmailConnected(false);
       setGmailEmail(null);
       setLastSyncedAt(null);
       setIsDisconnectModalOpen(false);
       setFeedbackMessage({
         type: 'success',
-        text: 'Gmail account disconnected and OAuth tokens purged.',
+        text: res.purged
+          ? 'Gmail account disconnected. Imported Gmail data was deleted.'
+          : 'Gmail account disconnected. Imported Gmail data was preserved.',
       });
+      setPurgeData(false);
     } catch (error) {
       console.error('Failed to disconnect Gmail:', error);
       setDisconnectError(error instanceof Error ? error.message : 'Failed to disconnect Gmail');
@@ -239,7 +243,10 @@ export default function Settings() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (isConnectModalOpen) setIsConnectModalOpen(false);
-        if (isDisconnectModalOpen) setIsDisconnectModalOpen(false);
+        if (isDisconnectModalOpen) {
+          setIsDisconnectModalOpen(false);
+          setPurgeData(false);
+        }
       }
     };
 
@@ -618,7 +625,12 @@ export default function Settings() {
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[var(--cf-overlay)] backdrop-blur-xs"
           role="presentation"
-          onClick={() => !isDisconnecting && setIsDisconnectModalOpen(false)}
+          onClick={() => {
+            if (!isDisconnecting) {
+              setIsDisconnectModalOpen(false);
+              setPurgeData(false);
+            }
+          }}
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.97 }}
@@ -639,11 +651,30 @@ export default function Settings() {
               </h2>
             </div>
 
-            <p className="mb-4 text-xs leading-relaxed text-[var(--cf-text-secondary)]">
+            <p className="mb-3 text-xs leading-relaxed text-[var(--cf-text-secondary)]">
               Are you sure you want to disconnect {gmailEmail ? <strong className="text-[var(--cf-text)]">{gmailEmail}</strong> : 'your mailbox'}?
               <br /><br />
               Stored OAuth access tokens will be purged immediately.
             </p>
+
+            <div className="mb-4 rounded-lg bg-[var(--cf-surface-muted)] p-3 border border-[var(--cf-border-subtle)]">
+              <label className="flex items-start gap-2.5 text-xs text-[var(--cf-text)] cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={purgeData}
+                  onChange={(e) => setPurgeData(e.target.checked)}
+                  className="mt-0.5 rounded border-slate-300 text-rose-600 focus:ring-rose-500"
+                />
+                <div className="space-y-0.5">
+                  <span className="font-semibold text-[var(--cf-text)]">
+                    Also delete synced Gmail data from CampusFlow
+                  </span>
+                  <p className="text-[11px] text-[var(--cf-text-secondary)] leading-relaxed">
+                    This removes imported email content and Gmail sync history. Your tasks and noticeboard notices will be preserved.
+                  </p>
+                </div>
+              </label>
+            </div>
 
             {disconnectError && (
               <div className="mb-4 rounded-lg bg-rose-50 p-2.5 text-xs text-rose-700 border border-rose-200">
@@ -653,7 +684,10 @@ export default function Settings() {
 
             <div className="flex justify-end gap-2">
               <Button
-                onClick={() => setIsDisconnectModalOpen(false)}
+                onClick={() => {
+                  setIsDisconnectModalOpen(false);
+                  setPurgeData(false);
+                }}
                 variant="secondary"
                 size="sm"
                 disabled={isDisconnecting}

@@ -11,6 +11,7 @@ import {
   parseGmailMessageDetails,
   toStructuredGmailMessage,
   syncGmailMessagesForUser,
+  disconnectGmailForUser,
   GmailNotConnectedError,
 } from '../services/gmail.service.js';
 import { noticeAnalyzerService } from '../services/noticeAnalyzer.service.js';
@@ -18,7 +19,7 @@ import { NoticeValidationError } from '../services/noticeValidator.js';
 import { pool } from '../db.js';
 import { randomUUID } from 'node:crypto';
 import { isReviewer, requireAuth } from '../middleware/requireAuth.js';
-import { encryptToken, decryptToken } from '../services/crypto.service.js';
+import { encryptToken } from '../services/crypto.service.js';
 
 const router = Router();
 
@@ -73,40 +74,15 @@ router.post('/disconnect', requireAuth(), async (req, res) => {
     });
   }
 
+  const purgeData = req.body?.purgeData === true;
+
   try {
-    const { rows } = await pool.query(
-      `
-      SELECT access_token, refresh_token
-      FROM gmail_connections
-      WHERE user_id = $1
-      `,
-      [userId],
-    );
-
-    if (rows.length > 0) {
-      const rawToken = rows[0].access_token || rows[0].refresh_token;
-      const { text: tokenToRevoke } = decryptToken(rawToken);
-      if (tokenToRevoke) {
-        try {
-          await gmailOAuth2Client.revokeToken(tokenToRevoke);
-        } catch (revokeError) {
-          // Token may already be expired or revoked externally; proceed with local deletion
-          console.warn('Google OAuth token revocation warning:', revokeError instanceof Error ? revokeError.message : revokeError);
-        }
-      }
-
-      await pool.query(
-        `
-        DELETE FROM gmail_connections
-        WHERE user_id = $1
-        `,
-        [userId],
-      );
-    }
+    const result = await disconnectGmailForUser(userId, { purgeData });
 
     return res.json({
       success: true,
       message: 'Gmail disconnected successfully',
+      purged: result.purged,
     });
   } catch (error) {
     console.error('Failed to disconnect Gmail:', error);
