@@ -36,7 +36,7 @@ export const campusEmailsService = {
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
       )
-      ON CONFLICT (source_account_email, source_message_id) DO UPDATE SET
+      ON CONFLICT (user_id, source_message_id) DO UPDATE SET
         received_at = COALESCE(EXCLUDED.received_at, campus_emails.received_at),
         subject = EXCLUDED.subject,
         body_text = COALESCE(EXCLUDED.body_text, campus_emails.body_text),
@@ -104,7 +104,7 @@ export const campusEmailsService = {
         links = $10,
         documents = $11,
         updated_at = CURRENT_TIMESTAMP
-      WHERE user_id = $12 AND source_account_email = $13 AND source_message_id = $14
+      WHERE user_id = $12 AND source_message_id = $13
       RETURNING *
     `;
 
@@ -121,7 +121,6 @@ export const campusEmailsService = {
       JSON.stringify(candidate.links || []),
       JSON.stringify(candidate.documents || []),
       userId,
-      sourceAccountEmail,
       sourceMessageId,
     ];
 
@@ -142,34 +141,24 @@ export const campusEmailsService = {
         analysis_status = 'failed',
         analysis_error = $1,
         updated_at = CURRENT_TIMESTAMP
-      WHERE user_id = $2 AND source_account_email = $3 AND source_message_id = $4
+      WHERE user_id = $2 AND source_message_id = $3
       RETURNING *
     `;
 
-    const { rows } = await pool.query(query, [errorMessage, userId, sourceAccountEmail, sourceMessageId]);
+    const { rows } = await pool.query(query, [errorMessage, userId, sourceMessageId]);
     if (rows.length === 0) return null;
     return mapRowToCampusEmail(rows[0]);
   },
 
-  markIgnoredPersonal: async (
+  deleteBySourceMessageId: async (
     userId: string,
-    sourceAccountEmail: string,
     sourceMessageId: string,
-    reason: string,
-  ): Promise<CampusEmail | null> => {
-    const query = `
-      UPDATE campus_emails
-      SET
-        analysis_status = 'ignored_personal',
-        analysis_error = $1,
-        updated_at = CURRENT_TIMESTAMP
-      WHERE user_id = $2 AND source_account_email = $3 AND source_message_id = $4
-      RETURNING *
-    `;
-
-    const { rows } = await pool.query(query, [reason, userId, sourceAccountEmail, sourceMessageId]);
-    if (rows.length === 0) return null;
-    return mapRowToCampusEmail(rows[0]);
+  ): Promise<boolean> => {
+    const result = await pool.query(
+      'DELETE FROM campus_emails WHERE user_id = $1 AND source_message_id = $2',
+      [userId, sourceMessageId],
+    );
+    return (result.rowCount ?? 0) > 0;
   },
 
   getAllForUser: async (userId: string): Promise<CampusEmail[]> => {
@@ -193,10 +182,10 @@ export const campusEmailsService = {
     const { rows } = await pool.query(
       `
       SELECT * FROM campus_emails
-      WHERE user_id = $1 AND source_account_email = $2 AND source_message_id = $3
+      WHERE user_id = $1 AND source_message_id = $2
       LIMIT 1
       `,
-      [userId, sourceAccountEmail, sourceMessageId],
+      [userId, sourceMessageId],
     );
 
     if (rows.length === 0) return null;

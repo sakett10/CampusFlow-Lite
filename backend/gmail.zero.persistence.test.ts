@@ -90,6 +90,8 @@ import {
   normalizeWhitespace,
 } from './services/emailSanitizer.service.js';
 import { getNoticeAnalyzer, resetNoticeAnalyzer } from './services/noticeAnalyzer.service.js';
+import { campusEmailsService } from './services/campusEmails.service.js';
+import { reclassifyExistingCampusEmails } from './services/gmail.service.js';
 
 describe('Gmail Zero-Persistence & Data Minimization Suite (Phase 1)', () => {
   beforeEach(async () => {
@@ -613,6 +615,163 @@ This communication is confidential and intended for VIT students only.
       // Check all console.log calls to ensure the secret message ID was NEVER logged
       const loggedTexts = consoleLogSpy.mock.calls.map((call) => call.join(' ')).join('\n');
       expect(loggedTexts).not.toContain(secretMsgId);
+    });
+  });
+
+  describe('5. Uniqueness & Historical Pruning Verification (Phase 2)', () => {
+    it('enforces (user_id, source_message_id) uniqueness and updates via ON CONFLICT', async () => {
+      const email1 = await campusEmailsService.persistEmail({
+        userId: 'user_A',
+        sourceAccountEmail: 'usera@vitstudent.ac.in',
+        sourceMessageId: 'msg_unique_100',
+        subject: 'Initial Subject',
+        bodyText: 'Initial Body',
+      });
+
+      expect(email1.userId).toBe('user_A');
+      expect(email1.sourceMessageId).toBe('msg_unique_100');
+      expect(email1.subject).toBe('Initial Subject');
+
+      // Attempt to insert again with same user_id and source_message_id
+      const emailUpdated = await campusEmailsService.persistEmail({
+        userId: 'user_A',
+        sourceAccountEmail: 'usera@vitstudent.ac.in',
+        sourceMessageId: 'msg_unique_100',
+        subject: 'Updated Subject',
+        bodyText: 'Updated Body',
+      });
+
+      expect(emailUpdated.id).toBe(email1.id);
+      expect(emailUpdated.subject).toBe('Updated Subject');
+
+      const { rows } = await pool.query(
+        'SELECT * FROM campus_emails WHERE user_id = $1 AND source_message_id = $2',
+        ['user_A', 'msg_unique_100'],
+      );
+      expect(rows).toHaveLength(1);
+    });
+
+    it('allows identical source_message_id across two distinct users (cross-user coexistence)', async () => {
+      await campusEmailsService.persistEmail({
+        userId: 'user_A',
+        sourceAccountEmail: 'usera@vitstudent.ac.in',
+        sourceMessageId: 'shared_broadcast_msg_1',
+        subject: 'Campus Broadcast',
+      });
+
+      await campusEmailsService.persistEmail({
+        userId: 'user_B',
+        sourceAccountEmail: 'userb@vitstudent.ac.in',
+        sourceMessageId: 'shared_broadcast_msg_1',
+        subject: 'Campus Broadcast',
+      });
+
+      const { rows: allRows } = await pool.query(
+        'SELECT * FROM campus_emails WHERE source_message_id = $1',
+        ['shared_broadcast_msg_1'],
+      );
+      expect(allRows).toHaveLength(2);
+      expect(allRows.map((r) => r.user_id).sort()).toEqual(['user_A', 'user_B']);
+    });
+
+    it('rejects raw duplicate insert violating uq_campus_emails_user_msg', async () => {
+      await pool.query(
+        `INSERT INTO campus_emails (id, user_id, source_account_email, source_message_id, subject)
+         VALUES ($1, 'user_A', 'usera@vitstudent.ac.in', 'dup_msg_1', 'Original')`,
+        [randomUUID()],
+      );
+
+      await expect(
+        pool.query(
+          `INSERT INTO campus_emails (id, user_id, source_account_email, source_message_id, subject)
+           VALUES ($1, 'user_A', 'usera@vitstudent.ac.in', 'dup_msg_1', 'Duplicate')`,
+          [randomUUID()],
+        ),
+      ).rejects.toThrow();
+    });
+
+    it('verifies notices and assignments survive deletion of campus_emails rows', async () => {
+      const email = await campusEmailsService.persistEmail({
+        userId: 'student_user',
+        sourceAccountEmail: 'student@vitstudent.ac.in',
+        sourceMessageId: 'msg_survive_test_1',
+        subject: 'Hackathon Announcement',
+      });
+
+      // Insert published notice with this source_message_id
+      const noticeId = randomUUID();
+      await pool.query(
+        `INSERT INTO notices (id, created_by_user_id, title, summary, category, priority, status, source_message_id)
+         VALUES ($1, 'reviewer_user', 'Hackathon Announcement', 'Hackathon details', 'event', 'normal', 'published', 'msg_survive_test_1')`,
+        [noticeId],
+      );
+
+      // Insert assignment with source_id = source_message_id
+      const assignmentId = randomUUID();
+      await pool.query(
+        `INSERT INTO assignments (id, user_id, title, due_date, status, source, source_id)
+         VALUES ($1, 'student_user', 'Register for Hackathon', '2026-10-15', 'PENDING', 'gmail', 'msg_survive_test_1')`,
+        [assignmentId],
+      );
+
+      // Delete campus_emails row
+      await campusEmailsService.deleteBySourceMessageId('student_user', 'msg_survive_test_1');
+
+      // Verify email row is gone
+      const { rows: emailRows } = await pool.query(
+        'SELECT * FROM campus_emails WHERE id = $1',
+        [email.id],
+      );
+      expect(emailRows).toHaveLength(0);
+
+      // Verify notice survived completely untouched
+      const { rows: noticeRows } = await pool.query(
+        'SELECT * FROM notices WHERE id = $1',
+        [noticeId],
+      );
+      expect(noticeRows).toHaveLength(1);
+      expect(noticeRows[0].status).toBe('published');
+
+      // Verify assignment survived completely untouched
+      const { rows: assignmentRows } = await pool.query(
+        'SELECT * FROM assignments WHERE id = $1',
+        [assignmentId],
+      );
+      expect(assignmentRows).toHaveLength(1);
+    });
+
+    it('reclassifyExistingCampusEmails deletes non-academic emails from campus_emails', async () => {
+      await campusEmailsService.persistEmail({
+        userId: 'student_user',
+        sourceAccountEmail: 'student@vitstudent.ac.in',
+        sourceMessageId: 'promo_cleanup_1',
+        subject: 'Big Sale - 50% Off Electronics',
+        bodyText: 'Limited time offer! Get your discounted laptops now at www.electronicsale.com.',
+        snippet: 'Limited time offer!',
+      });
+
+      const { rows: before } = await pool.query(
+        'SELECT * FROM campus_emails WHERE source_message_id = $1',
+        ['promo_cleanup_1'],
+      );
+      expect(before).toHaveLength(1);
+
+      const stats = await reclassifyExistingCampusEmails('student_user');
+      expect(stats.ignoredCount).toBe(1);
+
+      // Email row must be deleted completely
+      const { rows: after } = await pool.query(
+        'SELECT * FROM campus_emails WHERE source_message_id = $1',
+        ['promo_cleanup_1'],
+      );
+      expect(after).toHaveLength(0);
+
+      // Recorded in processed_gmail_messages
+      const { rows: processed } = await pool.query(
+        'SELECT * FROM processed_gmail_messages WHERE user_id = $1 AND gmail_message_id = $2',
+        ['student_user', 'promo_cleanup_1'],
+      );
+      expect(processed).toHaveLength(1);
     });
   });
 });

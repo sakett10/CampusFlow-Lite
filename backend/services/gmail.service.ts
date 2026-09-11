@@ -366,15 +366,8 @@ export async function reclassifyExistingCampusEmails(userId: string): Promise<{
     });
 
     if (!classification.isAcademic) {
-      if (email.analysisStatus !== 'ignored_personal') {
-        await campusEmailsService.markIgnoredPersonal(
-          userId,
-          email.sourceAccountEmail,
-          email.sourceMessageId,
-          classification.reason,
-        );
-        ignoredCount++;
-      }
+      await campusEmailsService.deleteBySourceMessageId(userId, email.sourceMessageId);
+      ignoredCount++;
       await markGmailMessageAsProcessed(userId, email.sourceMessageId);
       // Remove any assignments mistakenly created from personal email
       await pool.query(
@@ -577,7 +570,7 @@ export const syncGmailMessagesForUser = async (
 
     // Check if email already exists in campus_emails for this user
     const existingEmail = await campusEmailsService.getBySourceMessageId(userId, conn.google_email, rawMsg.id);
-    if (existingEmail && (existingEmail.analysisStatus === 'completed' || existingEmail.analysisStatus === 'ignored_personal')) {
+    if (existingEmail && existingEmail.analysisStatus === 'completed') {
       await markGmailMessageAsProcessed(userId, rawMsg.id);
       skipped++;
       continue;

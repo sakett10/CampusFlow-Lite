@@ -150,7 +150,7 @@ export function createTestPool(): pg.Pool {
       documents JSONB,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      CONSTRAINT uq_campus_emails_account_msg UNIQUE (source_account_email, source_message_id)
+      CONSTRAINT uq_campus_emails_user_msg UNIQUE (user_id, source_message_id)
     );
 
     CREATE TABLE notice_suppressions (

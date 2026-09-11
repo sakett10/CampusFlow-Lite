@@ -528,9 +528,12 @@ describe('Academic Gmail Pipeline & Deadline Generation Regression Suite (12 Sce
     expect(stats.ignoredCount).toBe(1);
     expect(stats.tasksGenerated).toBe(0); // Never automatically generate tasks
 
-    // Verify stale personal was updated to ignored_personal
-    const { rows: personalEmail } = await pool.query("SELECT analysis_status FROM campus_emails WHERE source_message_id = 'stale_personal_1'");
-    expect(personalEmail[0].analysis_status).toBe('ignored_personal');
+    // Verify stale personal was deleted from campus_emails and recorded in processed_gmail_messages
+    const { rows: personalEmail } = await pool.query("SELECT * FROM campus_emails WHERE source_message_id = 'stale_personal_1'");
+    expect(personalEmail).toHaveLength(0);
+
+    const { rows: processed } = await pool.query("SELECT * FROM processed_gmail_messages WHERE gmail_message_id = 'stale_personal_1'");
+    expect(processed).toHaveLength(1);
 
     // Verify notice was created for the academic email, but NO task was auto-created
     const { rows: notices } = await pool.query("SELECT * FROM notices WHERE source_message_id = 'stale_kalam_1'");

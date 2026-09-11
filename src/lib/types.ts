@@ -148,7 +148,7 @@ export interface CampusEmail {
   receivedAt?: string | null;
   bodyText?: string | null;
   snippet?: string | null;
-  analysisStatus: 'pending' | 'completed' | 'failed' | 'skipped' | 'ignored_personal';
+  analysisStatus: 'pending' | 'completed' | 'failed' | 'skipped';
   analysisError?: string | null;
   category?: string | null;
   audience?: string | null;
