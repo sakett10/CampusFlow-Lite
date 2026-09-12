@@ -253,3 +253,14 @@ export const globalApiLimiter = createRateLimiter({
   },
   message: 'Too many API requests. Please slow down.',
 });
+
+/**
+ * Rate limiter for POST /api/webhooks/clerk: 60 requests per minute per IP.
+ */
+export const clerkWebhookLimiter = createRateLimiter({
+  windowMs: 60_000,
+  max: 60,
+  prefix: 'webhook',
+  keyGenerator: (req) => ipOnlyRateLimitKeyGenerator(req, 'rl:webhook'),
+  message: 'Too many webhook requests. Please wait before retrying.',
+});

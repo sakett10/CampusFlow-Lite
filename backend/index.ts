@@ -9,6 +9,7 @@ import assignmentsRouter from './routes/assignments.route.js';
 import gmailRouter from './routes/gmail.route.js';
 import noticesRouter from './routes/notices.route.js';
 import notificationsRouter from './routes/notifications.route.js';
+import webhooksRouter from './routes/webhooks.route.js';
 
 import { clerkAuth, requireAuthMiddleware } from './middleware/requireAuth.js';
 import { globalApiLimiter } from './middleware/rateLimiter.js';
@@ -61,6 +62,20 @@ app.use(
     credentials: true,
   }),
 );
+
+// Mount Webhook endpoints BEFORE global express.json() and clerkAuth.
+// Cryptographic signature verification requires the exact raw byte Buffer.
+app.use(
+  '/api/webhooks',
+  express.raw({ type: 'application/json' }),
+  webhooksRouter,
+);
+app.use(
+  '/webhooks',
+  express.raw({ type: 'application/json' }),
+  webhooksRouter,
+);
+
 app.use(express.json());
 
 // Attach Clerk auth context globally

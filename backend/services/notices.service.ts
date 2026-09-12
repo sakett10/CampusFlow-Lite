@@ -22,6 +22,8 @@ import { mapRowToAssignment, assignmentsService } from './assignments.service.js
 import { parseNaturalDate } from './deadlineParser.service.js';
 import { isReviewerUserId } from '../middleware/requireAuth.js';
 
+export const SYSTEM_INSTITUTIONAL_USER_ID = 'admin';
+
 export class UnauthorizedNoticeAccessError extends Error {
   constructor(message = 'Notice not found or access denied') {
     super(message);
@@ -341,7 +343,7 @@ export const noticesService = {
     const isNonProd = process.env.NODE_ENV !== 'production';
     const reviewerIds = (process.env.REVIEWER_USER_IDS || '').split(',').map((s) => s.trim()).filter(Boolean);
     const adminIds = (process.env.ADMIN_USER_IDS || '').split(',').map((s) => s.trim()).filter(Boolean);
-    const authorizedReviewers = Array.from(new Set(['admin', ...reviewerIds, ...adminIds]));
+    const authorizedReviewers = Array.from(new Set([SYSTEM_INSTITUTIONAL_USER_ID, ...reviewerIds, ...adminIds]));
     const reviewerPrefixCheck = isNonProd
       ? "(notices.created_by_user_id LIKE 'reviewer%' OR notices.created_by_user_id LIKE 'admin%')"
       : "FALSE";
@@ -494,10 +496,10 @@ export const noticesService = {
     const isNonProd = process.env.NODE_ENV !== 'production';
     const isOwner = Boolean(userId && notice.createdByUserId === userId);
     const isCampusNotice =
+      notice.createdByUserId === SYSTEM_INSTITUTIONAL_USER_ID ||
       isReviewerUserId(notice.createdByUserId) ||
       (isNonProd &&
-        (notice.createdByUserId === 'admin' ||
-          notice.createdByUserId.startsWith('reviewer') ||
+        (notice.createdByUserId.startsWith('reviewer') ||
           notice.createdByUserId.startsWith('admin')));
 
     // Strict account isolation: Gmail-derived notices are strictly private to their owner unless institutional
@@ -792,10 +794,10 @@ export const noticesService = {
       const isNonProd = process.env.NODE_ENV !== 'production';
       const isOwner = Boolean(rawNotice.created_by_user_id === userId);
       const isCampusNotice =
+        rawNotice.created_by_user_id === SYSTEM_INSTITUTIONAL_USER_ID ||
         isReviewerUserId(rawNotice.created_by_user_id) ||
         (isNonProd &&
-          (rawNotice.created_by_user_id === 'admin' ||
-            rawNotice.created_by_user_id.startsWith('reviewer') ||
+          (rawNotice.created_by_user_id.startsWith('reviewer') ||
             rawNotice.created_by_user_id.startsWith('admin')));
 
       // 2. Verify source notice is accessible to the authenticated user

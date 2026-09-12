@@ -79,8 +79,9 @@ PORT=3000
 FRONTEND_URL=http://localhost:5173
 DATABASE_URL=postgresql://user:pass@ep-host.neon.tech/neondb?sslmode=require
 
-# Clerk Backend Authentication
+# Clerk Backend Authentication & Webhooks
 CLERK_SECRET_KEY=sk_test_...
+CLERK_WEBHOOK_SECRET=whsec_...
 
 # Reviewer & Admin Role Allowlists (comma-separated Clerk User IDs)
 REVIEWER_USER_IDS=user_reviewer1,user_reviewer2
