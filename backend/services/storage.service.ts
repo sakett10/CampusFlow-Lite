@@ -179,19 +179,19 @@ export const storageService = {
       const reviewerIds = (process.env.REVIEWER_USER_IDS || '').split(',').map((s) => s.trim()).filter(Boolean);
       const adminIds = (process.env.ADMIN_USER_IDS || '').split(',').map((s) => s.trim()).filter(Boolean);
       const authorizedIds = Array.from(new Set(['admin', ...reviewerIds, ...adminIds]));
+      const isNonProd = process.env.NODE_ENV !== 'production';
 
       const { rows: noticeRows } = await pool.query(
         `
         SELECT * FROM notices 
         WHERE status = 'published' AND (
           created_by_user_id = $1 OR
-          source_account_email IS NULL OR
           created_by_user_id = ANY($2::text[]) OR
-          created_by_user_id LIKE 'reviewer%'
+          ($3 AND (created_by_user_id LIKE 'reviewer%' OR created_by_user_id LIKE 'admin%'))
         )
         ORDER BY COALESCE(source_received_at, published_at, created_at) DESC, created_at DESC
         `,
-        [userId, authorizedIds],
+        [userId, authorizedIds, isNonProd],
       );
 
       publishedNoticeItems = noticeRows

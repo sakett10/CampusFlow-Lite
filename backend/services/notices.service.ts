@@ -317,7 +317,9 @@ export const noticesService = {
     const notice = mapRowToNotice(rows[0]);
 
     if (isPublished) {
-      const isCampusNotice = isReviewerUserId(userId) || userId === 'admin' || !sourceMeta?.accountEmail;
+      const isCampusNotice =
+        isReviewerUserId(userId) ||
+        (process.env.NODE_ENV !== 'production' && userId === 'admin');
       if (isCampusNotice) {
         try {
           await notificationsService.notifyNoticePublished(notice);
@@ -340,18 +342,19 @@ export const noticesService = {
     const reviewerIds = (process.env.REVIEWER_USER_IDS || '').split(',').map((s) => s.trim()).filter(Boolean);
     const adminIds = (process.env.ADMIN_USER_IDS || '').split(',').map((s) => s.trim()).filter(Boolean);
     const authorizedReviewers = Array.from(new Set(['admin', ...reviewerIds, ...adminIds]));
-    const reviewerPrefixCheck = isNonProd ? "notices.created_by_user_id LIKE 'reviewer%'" : "FALSE";
+    const reviewerPrefixCheck = isNonProd
+      ? "(notices.created_by_user_id LIKE 'reviewer%' OR notices.created_by_user_id LIKE 'admin%')"
+      : "FALSE";
 
     // Strict account isolation:
-    // Any notice with source_account_email set is a Gmail-derived notice.
-    // If not created by an authorized reviewer or admin, it MUST only be visible to its creator.
-    // Notices with source_account_email IS NULL or created by authorized reviewers are campus-wide institutional notices.
+    // Any notice not created by an authorized reviewer or admin is a private notice
+    // and MUST only be visible to its creator.
+    // Institutional visibility requires explicit reviewer/admin authorization.
     if (!filters.isReviewer) {
       if (filters.userId) {
         if (filters.status) {
           conditions.push(`(
             (notices.status = $${idx} AND (
-              notices.source_account_email IS NULL OR
               notices.created_by_user_id = ANY($${idx + 2}::text[]) OR
               ${reviewerPrefixCheck}
             )) OR
@@ -362,7 +365,6 @@ export const noticesService = {
         } else {
           conditions.push(`(
             (notices.status = 'published' AND (
-              notices.source_account_email IS NULL OR
               notices.created_by_user_id = ANY($${idx + 1}::text[]) OR
               ${reviewerPrefixCheck}
             )) OR
@@ -374,7 +376,6 @@ export const noticesService = {
       } else {
         conditions.push(`(
           notices.status = 'published' AND (
-            notices.source_account_email IS NULL OR
             notices.created_by_user_id = ANY($${idx}::text[]) OR
             ${reviewerPrefixCheck}
           )
@@ -389,7 +390,6 @@ export const noticesService = {
     } else {
       if (filters.userId) {
         conditions.push(`(
-          notices.source_account_email IS NULL OR
           notices.created_by_user_id = ANY($${idx + 1}::text[]) OR
           ${reviewerPrefixCheck} OR
           notices.created_by_user_id = $${idx}
@@ -398,7 +398,6 @@ export const noticesService = {
         idx += 2;
       } else {
         conditions.push(`(
-          notices.source_account_email IS NULL OR
           notices.created_by_user_id = ANY($${idx}::text[]) OR
           ${reviewerPrefixCheck}
         )`);
@@ -496,8 +495,10 @@ export const noticesService = {
     const isOwner = Boolean(userId && notice.createdByUserId === userId);
     const isCampusNotice =
       isReviewerUserId(notice.createdByUserId) ||
-      (isNonProd && (notice.createdByUserId === 'admin' || notice.createdByUserId.startsWith('reviewer'))) ||
-      !notice.sourceAccountEmail;
+      (isNonProd &&
+        (notice.createdByUserId === 'admin' ||
+          notice.createdByUserId.startsWith('reviewer') ||
+          notice.createdByUserId.startsWith('admin')));
 
     // Strict account isolation: Gmail-derived notices are strictly private to their owner unless institutional
     if (!isOwner && !isCampusNotice) {
@@ -794,8 +795,8 @@ export const noticesService = {
         isReviewerUserId(rawNotice.created_by_user_id) ||
         (isNonProd &&
           (rawNotice.created_by_user_id === 'admin' ||
-            rawNotice.created_by_user_id.startsWith('reviewer'))) ||
-        !rawNotice.source_account_email;
+            rawNotice.created_by_user_id.startsWith('reviewer') ||
+            rawNotice.created_by_user_id.startsWith('admin')));
 
       // 2. Verify source notice is accessible to the authenticated user
       if (!isOwner && !isCampusNotice) {
@@ -817,10 +818,16 @@ export const noticesService = {
       );
 
       if (existingBySource.length > 0) {
+        const existingTask = mapRowToAssignment(existingBySource[0]);
         await client.query('COMMIT');
         return {
-          task: mapRowToAssignment(existingBySource[0]),
-          notice: mapRowToNotice(rawNotice, userId),
+          task: existingTask,
+          notice: {
+            ...mapRowToNotice(rawNotice, userId),
+            isConverted: true,
+            convertedToTaskId: existingTask.id,
+            convertedAt: existingTask.createdAt || null,
+          },
           alreadyConverted: true,
         };
       }
@@ -877,19 +884,21 @@ export const noticesService = {
         client,
       );
 
-      // 6. Perform required notice metadata update using the same client
-      // Require the update to affect exactly one row
-      const updateRes = await client.query(
-        `UPDATE notices
-         SET is_converted = TRUE, converted_to_task_id = $1, converted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-         WHERE id = $2`,
-        [task.id, rawNotice.id],
-      );
-
-      if (updateRes.rowCount !== 1) {
-        throw new Error(
-          `Notice conversion update failed: expected 1 row affected, got ${updateRes.rowCount}`,
+      // 6. Perform notice metadata update ONLY for genuinely user-owned/private notices
+      // Shared institutional notices must NEVER be mutated with an individual user's task ID
+      if (isOwner && !isCampusNotice) {
+        const updateRes = await client.query(
+          `UPDATE notices
+           SET is_converted = TRUE, converted_to_task_id = $1, converted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+           WHERE id = $2`,
+          [task.id, rawNotice.id],
         );
+
+        if (updateRes.rowCount !== 1) {
+          throw new Error(
+            `Notice conversion update failed: expected 1 row affected, got ${updateRes.rowCount}`,
+          );
+        }
       }
 
       // 7. COMMIT
@@ -917,5 +926,14 @@ export const noticesService = {
     } finally {
       client.release();
     }
+  },
+
+  getBySourceMessageId: async (accountEmail: string, messageId: string): Promise<Notice | null> => {
+    const { rows } = await pool.query(
+      `SELECT * FROM notices WHERE source_account_email = $1 AND source_message_id = $2 LIMIT 1`,
+      [accountEmail, messageId],
+    );
+    if (rows.length === 0) return null;
+    return mapRowToNotice(rows[0]);
   },
 };

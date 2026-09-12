@@ -184,11 +184,26 @@ describe('Notice-to-Task Conversion, August Recovery & Idempotency Pipeline', ()
     expect(studentTasks[0].source).toBe('notice');
     expect(studentTasks[0].source_id).toBe(notice.id);
 
-    // Step G: Verify notice row is marked converted
+    // Step G: Verify shared notice row is NOT mutated (per-user assignments is the source of truth)
     const { rows: updatedNoticeRows } = await pool.query('SELECT * FROM notices WHERE id = $1', [notice.id]);
-    expect(updatedNoticeRows[0].is_converted).toBe(true);
-    expect(updatedNoticeRows[0].converted_to_task_id).toBe(studentTasks[0].id);
-    expect(updatedNoticeRows[0].converted_at).not.toBeNull();
+    expect(updatedNoticeRows[0].is_converted).toBe(false);
+    expect(updatedNoticeRows[0].converted_to_task_id).toBeNull();
+
+    // Verify student_1 sees notice as converted via API
+    const student1NoticeRes = await request(app)
+      .get(`/api/notices/${notice.id}`)
+      .set('Authorization', 'Bearer student_1');
+    expect(student1NoticeRes.status).toBe(200);
+    expect(student1NoticeRes.body.isConverted).toBe(true);
+    expect(student1NoticeRes.body.convertedToTaskId).toBe(studentTasks[0].id);
+
+    // Verify student_2 sees notice as UNCONVERTED via API
+    const student2NoticeRes = await request(app)
+      .get(`/api/notices/${notice.id}`)
+      .set('Authorization', 'Bearer student_2');
+    expect(student2NoticeRes.status).toBe(200);
+    expect(student2NoticeRes.body.isConverted).toBe(false);
+    expect(student2NoticeRes.body.convertedToTaskId).toBeNull();
   });
 
   it('2. Idempotency: Duplicate Sync & Duplicate Convert-to-Task Prevent Redundant Records', async () => {
@@ -459,13 +474,13 @@ describe('Notice-to-Task Conversion, August Recovery & Idempotency Pipeline', ()
       expect(taskRows).toHaveLength(1);
       expect(taskRows[0].id).toBe(res.body.task.id);
 
-      // Assert notice metadata committed
+      // Assert shared notice row is NOT mutated in notices table
       const { rows: noticeRows } = await pool.query(
         'SELECT * FROM notices WHERE id = $1',
         [noticeId],
       );
-      expect(noticeRows[0].is_converted).toBe(true);
-      expect(noticeRows[0].converted_to_task_id).toBe(res.body.task.id);
+      expect(noticeRows[0].is_converted).toBe(false);
+      expect(noticeRows[0].converted_to_task_id).toBeNull();
     });
 
     it('2. student converts their own private notice → success', async () => {
@@ -493,6 +508,14 @@ describe('Notice-to-Task Conversion, August Recovery & Idempotency Pipeline', ()
         [noticeId],
       );
       expect(rows).toHaveLength(1);
+
+      // Private notice row is updated for its owner
+      const { rows: privateNoticeRows } = await pool.query(
+        'SELECT * FROM notices WHERE id = $1',
+        [noticeId],
+      );
+      expect(privateNoticeRows[0].is_converted).toBe(true);
+      expect(privateNoticeRows[0].converted_to_task_id).toBe(res.body.task.id);
     });
 
     it("3. student cannot convert another student's private notice → 403", async () => {
@@ -523,7 +546,7 @@ describe('Notice-to-Task Conversion, August Recovery & Idempotency Pipeline', ()
       const noticeId = randomUUID();
       await pool.query(
         `INSERT INTO notices (id, created_by_user_id, title, summary, category, priority, status)
-         VALUES ($1, 'reviewer_1', 'Rollback On Update Failure Notice', 'Summary', 'academic', 'normal', 'published')`,
+         VALUES ($1, 'student_1', 'Rollback On Update Failure Notice', 'Summary', 'academic', 'normal', 'pending')`,
         [noticeId],
       );
 

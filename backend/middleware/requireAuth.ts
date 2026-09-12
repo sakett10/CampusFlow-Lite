@@ -24,7 +24,7 @@ export function isReviewerUserId(userId: string): boolean {
     return true;
   }
   if (process.env.NODE_ENV !== 'production') {
-    if (userId === 'admin' || userId.startsWith('reviewer')) {
+    if (userId === 'admin' || userId.startsWith('reviewer') || userId.startsWith('admin')) {
       return true;
     }
   }
@@ -46,7 +46,7 @@ export function isReviewer(req: Request): boolean {
   const claims = authReq.auth?.sessionClaims;
   if (claims) {
     const meta = claims.metadata as Record<string, unknown> | undefined;
-    const publicMeta = claims.publicMetadata as Record<string, unknown> | undefined;
+    const publicMeta = (claims.publicMetadata || claims.public_metadata) as Record<string, unknown> | undefined;
     const role = (meta?.role || publicMeta?.role || claims.role) as string | undefined;
     if (role === 'reviewer' || role === 'admin') {
       return true;

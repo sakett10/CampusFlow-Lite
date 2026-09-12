@@ -223,9 +223,8 @@ export const notificationsService = {
         WHERE status = 'published'
           AND important_dates IS NOT NULL
           AND (
-            source_account_email IS NULL
-            OR created_by_user_id = ANY($1::text[])
-            OR ($2 AND created_by_user_id LIKE 'reviewer%')
+            created_by_user_id = ANY($1::text[])
+            OR ($2 AND (created_by_user_id LIKE 'reviewer%' OR created_by_user_id LIKE 'admin%'))
             OR created_by_user_id = $3
           )
         `,
