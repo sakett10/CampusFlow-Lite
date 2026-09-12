@@ -20,6 +20,11 @@ import { pool } from '../db.js';
 import { randomUUID } from 'node:crypto';
 import { isReviewer, requireAuth } from '../middleware/requireAuth.js';
 import { encryptToken } from '../services/crypto.service.js';
+import {
+  gmailSyncLimiter,
+  gmailAnalyzeLimiter,
+  gmailCallbackLimiter,
+} from '../middleware/rateLimiter.js';
 
 const router = Router();
 
@@ -27,7 +32,7 @@ const router = Router();
  * Generate Google OAuth authorization URL
  * GET /api/gmail/auth-url
  */
-router.get('/auth-url', requireAuth(), (req, res) => {
+router.get('/auth-url', requireAuth(), gmailCallbackLimiter, (req, res) => {
   const { userId } = getAuth(req);
 
   if (!userId) {
@@ -36,17 +41,24 @@ router.get('/auth-url', requireAuth(), (req, res) => {
     });
   }
 
-  const state = createOAuthState(userId);
-  const authUrl = getGoogleAuthUrl(state);
+  try {
+    const state = createOAuthState(userId);
+    const authUrl = getGoogleAuthUrl(state);
 
-  return res.json({ url: authUrl });
+    return res.json({ url: authUrl });
+  } catch (error) {
+    console.error('Failed to generate Google auth URL:', error);
+    return res.status(500).json({
+      error: 'Google authentication is currently unavailable',
+    });
+  }
 });
 
 /**
  * Start Gmail OAuth (legacy browser redirect fallback)
  * GET /api/gmail/connect
  */
-router.get('/connect', requireAuth(), (req, res) => {
+router.get('/connect', requireAuth(), gmailCallbackLimiter, (req, res) => {
   const { userId } = getAuth(req);
 
   if (!userId) {
@@ -55,10 +67,16 @@ router.get('/connect', requireAuth(), (req, res) => {
     });
   }
 
-  const state = createOAuthState(userId);
-  const authUrl = getGoogleAuthUrl(state);
+  try {
+    const state = createOAuthState(userId);
+    const authUrl = getGoogleAuthUrl(state);
 
-  return res.redirect(authUrl);
+    return res.redirect(authUrl);
+  } catch (error) {
+    console.error('Failed to initialize Google OAuth redirect:', error);
+    const frontendBase = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+    return res.redirect(`${frontendBase}/settings?gmail_error=auth_init_failed`);
+  }
 });
 
 /**
@@ -96,7 +114,7 @@ router.post('/disconnect', requireAuth(), async (req, res) => {
  * Gmail OAuth callback
  * GET /api/gmail/callback
  */
-router.get('/callback', async (req, res) => {
+router.get('/callback', gmailCallbackLimiter, async (req, res) => {
   const { code, state, error } = req.query;
   const frontendBase = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
 
@@ -391,7 +409,7 @@ router.get('/messages/:messageId', requireAuth(), async (req, res) => {
  * Synchronize Gmail messages
  * POST /api/gmail/sync
  */
-router.post('/sync', requireAuth(), async (req, res) => {
+router.post('/sync', requireAuth(), gmailSyncLimiter, async (req, res) => {
   const { userId } = getAuth(req);
 
   if (!userId) {
@@ -418,12 +436,10 @@ router.post('/sync', requireAuth(), async (req, res) => {
       });
     }
 
-    const errorDetails = error instanceof Error ? error.message : String(error);
     console.error('Failed to sync Gmail messages:', error);
 
     return res.status(500).json({
       error: 'Failed to sync Gmail messages',
-      details: errorDetails,
     });
   }
 });
@@ -432,7 +448,7 @@ router.post('/sync', requireAuth(), async (req, res) => {
  * Analyze Gmail message into NoticeCandidate
  * POST /api/gmail/analyze/:messageId
  */
-router.post('/analyze/:messageId', requireAuth(), async (req, res) => {
+router.post('/analyze/:messageId', requireAuth(), gmailAnalyzeLimiter, async (req, res) => {
   const { userId } = getAuth(req);
 
   if (!userId) {

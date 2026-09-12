@@ -43,30 +43,40 @@ vi.mock('googleapis', () => {
 });
 
 let mockNoticeAnalyzer: { analyze: (msg: unknown) => Promise<unknown> } | null = null;
-vi.mock('./services/noticeAnalyzer.service.js', () => ({
-  noticeAnalyzerService: {
-    analyze: (msg: unknown) => {
-      if (mockNoticeAnalyzer) {
-        return mockNoticeAnalyzer.analyze(msg);
+let mockExtractHeuristicCandidate: ((msg: unknown) => Record<string, unknown>) | null = null;
+vi.mock('./services/noticeAnalyzer.service.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./services/noticeAnalyzer.service.js')>();
+  return {
+    ...actual,
+    extractHeuristicCandidate: (msg: unknown) => {
+      if (mockExtractHeuristicCandidate) {
+        return mockExtractHeuristicCandidate(msg);
       }
-      const m = msg as { id?: string; subject?: string };
-      return Promise.resolve({
-        title: m?.subject || 'Default Test Notice',
-        summary: 'Default test summary for students.',
-        category: 'academic',
-        priority: 'normal',
-        isCampusWide: true,
-        source: {
-          provider: 'gmail',
-          messageId: m?.id || 'msg_default',
-          sender: 'dept@vit.ac.in',
-          subject: m?.subject || 'Official Update',
-        },
-      });
+      return actual.extractHeuristicCandidate(msg as Parameters<typeof actual.extractHeuristicCandidate>[0]);
     },
-
-  },
-}));
+    noticeAnalyzerService: {
+      analyze: (msg: unknown) => {
+        if (mockNoticeAnalyzer) {
+          return mockNoticeAnalyzer.analyze(msg);
+        }
+        const m = msg as { id?: string; subject?: string };
+        return Promise.resolve({
+          title: m?.subject || 'Default Test Notice',
+          summary: 'Default test summary for students.',
+          category: 'academic',
+          priority: 'normal',
+          isCampusWide: true,
+          source: {
+            provider: 'gmail',
+            messageId: m?.id || 'msg_default',
+            sender: 'dept@vit.ac.in',
+            subject: m?.subject || 'Official Update',
+          },
+        });
+      },
+    },
+  };
+});
 
 vi.mock('@clerk/express', () => ({
   clerkMiddleware: () => (req: { headers: Record<string, string>; auth?: { userId: string; sessionClaims?: Record<string, unknown> } }, _res: unknown, next: () => void) => {
@@ -126,6 +136,7 @@ describe('Phase C3.5: Automatic Gmail Ingestion, Notice Feed Integration & Notif
     mockList.mockReset();
     mockGet.mockReset();
     mockNoticeAnalyzer = null;
+    mockExtractHeuristicCandidate = null;
     await pool.query('DELETE FROM notifications');
     await pool.query('DELETE FROM processed_gmail_messages');
     await pool.query('DELETE FROM notices');
@@ -729,6 +740,19 @@ describe('Phase C3.5: Automatic Gmail Ingestion, Notice Feed Integration & Notif
         },
       };
 
+      mockExtractHeuristicCandidate = (msg: unknown) => {
+        const m = msg as { id?: string };
+        if (m?.id === 'msg_ai_fail_3') {
+          throw new Error('Heuristic candidate extraction failed');
+        }
+        return {
+          title: 'Fallback Notice',
+          summary: 'Fallback summary',
+          category: 'academic',
+          priority: 'normal',
+        };
+      };
+
       const stats = await syncGmailMessagesForUser('student_user_c5', 10);
       expect(stats.emailsPersisted).toBe(3);
       expect(stats.analysesFailed).toBe(1);
@@ -750,13 +774,13 @@ describe('Phase C3.5: Automatic Gmail Ingestion, Notice Feed Integration & Notif
       const sharedThreadEmails = emailRows.filter((e) => e.source_message_id.startsWith('msg_ai_success_'));
       expect(sharedThreadEmails).toHaveLength(2);
 
-      // Re-sync idempotency
+      // Re-sync idempotency: Phase 2C marks failed emails as processed to prevent infinite AI retry loops
       mockList.mockResolvedValueOnce({
         data: { messages: msgs.map((m) => ({ id: m.id, threadId: m.threadId })) },
       });
       const reSyncStats = await syncGmailMessagesForUser('student_user_c5', 10);
-      expect(reSyncStats.skipped).toBe(2); // msg_ai_success_1 & 2 skipped because analysis completed
-      expect(reSyncStats.newMessages).toBe(1); // msg_ai_fail_3 retries
+      expect(reSyncStats.skipped).toBe(3); // msg_ai_success_1 & 2 skipped, msg_ai_fail_3 skipped to avoid burning AI quota
+      expect(reSyncStats.newMessages).toBe(0);
     });
   });
 

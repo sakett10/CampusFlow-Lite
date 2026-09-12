@@ -16,6 +16,7 @@ import { NoticeValidationError } from '../services/noticeValidator.js';
 import { GmailNotConnectedError } from '../services/gmail.service.js';
 import { CourseNotFoundError } from '../services/assignments.service.js';
 import type { NoticeCategory, NoticePriority, NoticeStatus } from '../types.js';
+import { noticeConvertLimiter } from '../middleware/rateLimiter.js';
 
 const router = Router();
 
@@ -24,6 +25,10 @@ const router = Router();
  * GET /api/notices
  */
 router.get('/', requireAuth(), async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+
   const auth = getAuth(req);
   if (!auth?.userId) {
     return res.status(401).json({ error: 'Unauthenticated' });
@@ -83,7 +88,7 @@ router.get('/:id', requireAuth(), async (req, res) => {
  * Convert notice to task
  * POST /api/notices/:id/convert-to-task
  */
-router.post('/:id/convert-to-task', requireAuth(), async (req, res) => {
+router.post('/:id/convert-to-task', requireAuth(), noticeConvertLimiter, async (req, res) => {
   const auth = getAuth(req);
   if (!auth?.userId) {
     return res.status(401).json({ error: 'Unauthenticated' });

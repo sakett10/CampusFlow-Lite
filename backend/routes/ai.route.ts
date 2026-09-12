@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { aiService } from '../services/ai.service.js';
+import { aiAnalyzeLimiter } from '../middleware/rateLimiter.js';
 
 const router = Router();
 
-router.post('/analyze', async (req, res) => {
+router.post('/analyze', aiAnalyzeLimiter, async (req, res) => {
   try {
     const { text } = req.body;
     if (!text) {

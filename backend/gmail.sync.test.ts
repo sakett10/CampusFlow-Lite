@@ -581,7 +581,7 @@ describe('Gmail Sync Foundation (Phase C1 + C3 Automatic Notice Pipeline)', () =
       expect(processedRows.length).toBe(2);
     });
 
-    it('allows retry for transient errors: temporary failures do NOT mark message as processed', async () => {
+    it('rescues transient AI errors with deterministic heuristic fallback and protects AI quota on subsequent sync', async () => {
       await pool.query(
         `
         INSERT INTO gmail_connections (id, user_id, google_email, access_token, refresh_token, expiry_date)
@@ -601,7 +601,7 @@ describe('Gmail Sync Foundation (Phase C1 + C3 Automatic Notice Pipeline)', () =
         },
       });
 
-      // 1st run fails with transient network error
+      // 1st run: AI fails with transient error -> deterministic heuristic fallback rescues it!
       setNoticeAnalyzer({
         analyze: vi.fn().mockRejectedValueOnce(new Error('Transient AI service network timeout')),
       });
@@ -611,34 +611,25 @@ describe('Gmail Sync Foundation (Phase C1 + C3 Automatic Notice Pipeline)', () =
         .set('Authorization', 'Bearer user_A');
 
       expect(res1.status).toBe(200);
-      expect(res1.body.noticesCreated).toBe(0);
-      expect(res1.body.processed).toBe(0);
+      expect(res1.body.noticesCreated).toBe(1);
+      expect(res1.body.processed).toBe(1);
 
-      // Message was NOT marked as processed in DB
+      // Message was marked as processed in DB so quota is not burned on every sync
       const { rows: processed1 } = await pool.query("SELECT * FROM processed_gmail_messages WHERE gmail_message_id = 'msg_transient_1'");
-      expect(processed1.length).toBe(0);
+      expect(processed1.length).toBe(1);
 
-      // 2nd run: network recovers, analyzer succeeds
-      setNoticeAnalyzer({
-        analyze: vi.fn().mockResolvedValueOnce({
-          title: 'Recovered Notice',
-          summary: 'Successfully processed after retry.',
-          category: 'alert',
-          priority: 'urgent',
-          source: { provider: 'gmail', messageId: 'msg_transient_1', sender: 'admin@vit.ac.in', subject: 'Transient Test' },
-        }),
-      });
+      // 2nd run: message is already processed, so it is safely skipped without re-invoking AI
+      const mockAnalyze = vi.fn();
+      setNoticeAnalyzer({ analyze: mockAnalyze });
 
       const res2 = await request(app)
         .post('/api/gmail/sync')
         .set('Authorization', 'Bearer user_A');
 
       expect(res2.status).toBe(200);
-      expect(res2.body.noticesCreated).toBe(1);
-      expect(res2.body.processed).toBe(1);
-
-      const { rows: processed2 } = await pool.query("SELECT * FROM processed_gmail_messages WHERE gmail_message_id = 'msg_transient_1'");
-      expect(processed2.length).toBe(1);
+      expect(res2.body.noticesCreated).toBe(0);
+      expect(res2.body.skipped).toBe(1);
+      expect(mockAnalyze).not.toHaveBeenCalled();
     });
 
     it('safely handles Gmail API errors (500) without exposing sensitive credentials or tokens', async () => {

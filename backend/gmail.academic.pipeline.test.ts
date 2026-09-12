@@ -523,6 +523,10 @@ describe('Academic Gmail Pipeline & Deadline Generation Regression Suite (12 Sce
       [randomUUID()],
     );
 
+    setNoticeAnalyzer({
+      analyze: vi.fn().mockRejectedValue(new Error('Simulated AI unavailable in unit test')),
+    });
+
     const stats = await reclassifyExistingCampusEmails('student_user');
     expect(stats.reclassifiedCount).toBe(1);
     expect(stats.ignoredCount).toBe(1);

@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { randomUUID, createHash } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import { pool } from '../db.js';
-import type { GmailSyncStats, StructuredGmailMessage, NoticeCandidate, NoticeCategory, NoticePriority } from '../types.js';
+import type { GmailSyncStats, StructuredGmailMessage, NoticeCandidate, NoticeCategory, NoticePriority, CampusEmail } from '../types.js';
 
 import { noticeAnalyzerService, extractHeuristicCandidate } from './noticeAnalyzer.service.js';
 import {
@@ -390,51 +390,70 @@ export async function reclassifyExistingCampusEmails(userId: string): Promise<{
           bodyText: email.bodyText || email.snippet || '',
           snippet: email.snippet || '',
         };
-        const rawCandidate = extractHeuristicCandidate(structuredMsg);
         try {
-          const validated = validateNoticeCandidate(rawCandidate, {
-            provider: 'gmail',
-            messageId: email.sourceMessageId,
-            sender: email.senderEmail || '',
-            subject: email.subject || '',
-          });
-          candidateObj = validated;
+          candidateObj = await noticeAnalyzerService.analyze(structuredMsg);
+        } catch {
+          try {
+            const rawCandidate = extractHeuristicCandidate(structuredMsg);
+            candidateObj = validateNoticeCandidate(rawCandidate, {
+              provider: 'gmail',
+              messageId: email.sourceMessageId,
+              sender: email.senderEmail || '',
+              subject: email.subject || '',
+            });
+          } catch (valErr) {
+            console.warn('Validation error on reclassifying candidate:', valErr);
+          }
+        }
+
+        if (candidateObj) {
           await campusEmailsService.updateAnalysisSuccess(
             userId,
             email.sourceAccountEmail,
             email.sourceMessageId,
-            validated,
+            candidateObj,
           );
-        } catch (valErr) {
-          console.warn('Validation error on reclassifying candidate:', valErr);
+          await markGmailMessageAsProcessed(userId, email.sourceMessageId);
+        } else {
+          await campusEmailsService.updateAnalysisFailure(
+            userId,
+            email.sourceAccountEmail,
+            email.sourceMessageId,
+            'Reclassification analysis failed',
+          );
         }
       }
 
       // Check for deadline / actionable task
-      const candidateToUse: NoticeCandidate = candidateObj || {
-        title: email.subject || 'Campus Notice',
-        summary: email.summary || '',
-        category: (email.category as NoticeCategory) || 'academic',
-        priority: (email.importance === 'urgent' ? 'urgent' : email.importance === 'high' ? 'important' : email.importance === 'low' ? 'low' : 'normal') as NoticePriority,
-        actionRequired: email.importantActions?.[0] || undefined,
-        importantDates: email.deadline ? [{ label: 'Deadline', date: email.deadline }] : (email.eventDate ? [{ label: 'Event Date', date: email.eventDate }] : []),
-        source: {
-          provider: 'gmail',
-          messageId: email.sourceMessageId,
-          sender: email.senderEmail || '',
-          subject: email.subject || '',
-        },
-      };
-
-      try {
-        await noticesService.createFromCandidate(userId, candidateToUse, {
-          accountEmail: email.sourceAccountEmail,
-          initialStatus: 'published',
-        });
-      } catch {
-        // Notice may already exist or suppressed
+      let candidateToUse: NoticeCandidate | null = candidateObj;
+      if (!candidateToUse && email.analysisStatus === 'completed') {
+        candidateToUse = {
+          title: email.subject || 'Campus Notice',
+          summary: email.summary || '',
+          category: (email.category as NoticeCategory) || 'academic',
+          priority: (email.importance === 'urgent' ? 'urgent' : email.importance === 'high' ? 'important' : email.importance === 'low' ? 'low' : 'normal') as NoticePriority,
+          actionRequired: email.importantActions?.[0] || undefined,
+          importantDates: email.deadline ? [{ label: 'Deadline', date: email.deadline }] : (email.eventDate ? [{ label: 'Event Date', date: email.eventDate }] : []),
+          source: {
+            provider: 'gmail',
+            messageId: email.sourceMessageId,
+            sender: email.senderEmail || '',
+            subject: email.subject || '',
+          },
+        };
       }
-      await markGmailMessageAsProcessed(userId, email.sourceMessageId);
+
+      if (candidateToUse) {
+        try {
+          await noticesService.createFromCandidate(userId, candidateToUse, {
+            accountEmail: email.sourceAccountEmail,
+            initialStatus: 'published',
+          });
+        } catch {
+          // Notice may already exist or suppressed
+        }
+        await markGmailMessageAsProcessed(userId, email.sourceMessageId);
+      }
     }
   }
 
@@ -491,12 +510,68 @@ export async function releaseUserAdvisoryLock(client: PoolClient, userId: string
   }
 }
 
+export function getHistoricalSyncQuery(days = 90): string {
+  const envDays = process.env.GMAIL_HISTORICAL_SYNC_DAYS ? parseInt(process.env.GMAIL_HISTORICAL_SYNC_DAYS, 10) : NaN;
+  const syncDays = !Number.isNaN(envDays) && envDays > 0 ? envDays : days;
+  const cutoffDate = new Date(Date.now() - syncDays * 24 * 60 * 60 * 1000);
+  const yyyy = cutoffDate.getFullYear();
+  const mm = String(cutoffDate.getMonth() + 1).padStart(2, '0');
+  const dd = String(cutoffDate.getDate()).padStart(2, '0');
+  return `after:${yyyy}/${mm}/${dd}`;
+}
+
 export interface GmailSyncOptions {
   query?: string;
   syncHistorical?: boolean;
 }
 
 // Local in-memory set kept as a lightweight single-process optimization
+export function campusEmailToCandidate(email: CampusEmail): NoticeCandidate {
+  const dates: Array<{ label: string; date: string }> = [];
+  if (email.eventDate) {
+    dates.push({ label: 'Event Date', date: email.eventDate });
+  }
+  if (email.deadline) {
+    dates.push({ label: 'Deadline', date: email.deadline });
+  }
+
+  const validCategory = ['academic', 'administrative', 'event', 'club', 'career', 'exam', 'general'].includes(email.category || '')
+    ? (email.category as NoticeCategory)
+    : 'general';
+
+  const validPriority = ['urgent', 'high', 'normal', 'low'].includes(email.importance || '')
+    ? (email.importance as NoticePriority)
+    : 'normal';
+
+  const title = (email.subject && email.subject.trim().length >= 3) ? email.subject.trim() : 'Campus Notice';
+  const summary = (email.summary && email.summary.trim().length >= 5)
+    ? email.summary.trim()
+    : (email.snippet && email.snippet.trim().length >= 5)
+    ? email.snippet.trim()
+    : `${title} - University notice`;
+
+  return {
+    title,
+    summary,
+    category: validCategory,
+    priority: validPriority,
+    audience: email.audience || undefined,
+    importantDates: dates,
+    actionRequired: email.importantActions && email.importantActions.length > 0 ? email.importantActions[0] : undefined,
+    venue: email.venue || undefined,
+    links: email.links || [],
+    documents: email.documents || [],
+    source: {
+      provider: 'gmail',
+      messageId: email.sourceMessageId,
+      sender: email.senderEmail || email.senderName || 'University',
+      subject: email.subject || title,
+      receivedAt: email.receivedAt || undefined,
+    },
+    isCampusWide: true,
+  };
+}
+
 const activeSyncUsers = new Set<string>();
 
 export const syncGmailMessagesForUser = async (
@@ -604,7 +679,7 @@ export const syncGmailMessagesForUser = async (
   // Fetch messages with pagination support strictly bounded by batchSize / historical query
   const rawMessages: Array<{ id?: string | null; threadId?: string | null }> = [];
   let pageToken: string | undefined = undefined;
-  const q = options?.query || (options?.syncHistorical ? 'after:2026/07/31' : undefined);
+  const q = options?.query || (options?.syncHistorical ? getHistoricalSyncQuery() : undefined);
   const targetLimit = options?.syncHistorical ? Math.max(batchSize, 100) : batchSize;
 
   do {
@@ -659,175 +734,302 @@ export const syncGmailMessagesForUser = async (
   let deadlineCandidatesGenerated = 0;
   const tasksGenerated = 0;
 
-  for (const rawMsg of rawMessages) {
-    if (!rawMsg || !rawMsg.id || typeof rawMsg.id !== 'string') {
-      continue;
-    }
-    checked++;
+  const maybeCreateNoticeFromExistingEmail = async (email: CampusEmail): Promise<boolean> => {
+    if (!isAuthorizedReviewer) return false;
+    const existingNotice = await noticesService.getBySourceMessageId(conn.google_email, email.sourceMessageId);
+    if (existingNotice) return false;
 
-    const alreadyProcessed = await isGmailMessageProcessed(userId, rawMsg.id);
-    if (alreadyProcessed) {
-      skipped++;
-      continue;
+    const candidate = campusEmailToCandidate(email);
+    if (candidate.isCampusWide === false || isPersonalOrNonNotice(candidate)) {
+      return false;
     }
 
-    // Check if email already exists in campus_emails for this user
-    const existingEmail = await campusEmailsService.getBySourceMessageId(userId, conn.google_email, rawMsg.id);
-    if (existingEmail && existingEmail.analysisStatus === 'completed') {
-      await markGmailMessageAsProcessed(userId, rawMsg.id);
-      skipped++;
-      continue;
-    }
+    const dates = candidate.importantDates || [];
+    const eventDate = dates.length > 0 ? dates[0].date : null;
+    const fingerprint = generateNoticeFingerprint(
+      candidate.title,
+      eventDate,
+      candidate.venue,
+      candidate.source.sender,
+    );
 
-    newMessages++;
+    const suppressed = await isNoticeSuppressed(conn.google_email, email.sourceMessageId, fingerprint);
+    if (suppressed) return false;
 
     try {
-      const messageResponse = await gmail.users.messages.get({
-        userId: 'me',
-        id: rawMsg.id,
-        format: 'full',
+      const createdNotice = await noticesService.createFromCandidate(userId, candidate, {
+        connectionId: conn.id,
+        accountEmail: conn.google_email,
+        initialStatus: 'published',
+        sourceReceivedAt: email.receivedAt || null,
       });
-
-      const parsedDetails = parseGmailMessageDetails(messageResponse.data, rawMsg.id);
-
-      // Stage 1 classification: evaluate with metadata + snippet (no full body)
-      let classification = classifyEmail({
-        from: parsedDetails.from,
-        subject: parsedDetails.subject,
-        snippet: parsedDetails.snippet,
-      });
-
-      // If Stage 1 is uncertain, evaluate with body text in Stage 2
-      if (classification.outcome === 'uncertain') {
-        classification = classifyEmail({
-          from: parsedDetails.from,
-          subject: parsedDetails.subject,
-          snippet: parsedDetails.snippet,
-          bodyText: parsedDetails.bodyText || parsedDetails.body || parsedDetails.snippet,
-        });
+      noticesCreated++;
+      if (createdNotice.status === 'pending') {
+        pendingNoticesCount++;
       }
+      return true;
+    } catch (noticeErr) {
+      if (
+        !(noticeErr instanceof DuplicateNoticeError) &&
+        !(noticeErr instanceof NoticeSuppressedError) &&
+        !(noticeErr instanceof NoticeValidationError)
+      ) {
+        console.error('Notice recovery creation error:', noticeErr);
+      }
+      return false;
+    }
+  };
 
-      // Filter out non-academic / personal / promotional emails
-      const isPersonalOrPromo = !classification.isAcademic || classification.outcome === 'personal';
-      const shouldIgnore = isPersonalOrPromo;
+  // Process messages in bounded chunks (concurrency: 5) to accelerate throughput
+  // without exceeding Gmail API rate limits or overwhelming serverless connection pools
+  const CHUNK_SIZE = 5;
+  for (let i = 0; i < rawMessages.length; i += CHUNK_SIZE) {
+    const chunk = rawMessages.slice(i, i + CHUNK_SIZE);
 
-      if (shouldIgnore) {
-        // Personal Email Zero-Persistence:
-        // Non-academic and personal emails are NEVER inserted into campus_emails.
-        // Only mark as processed in processed_gmail_messages for deduplication.
-        await markGmailMessageAsProcessed(userId, rawMsg.id);
-        ignoredMessages++;
-        processed++;
+    // Filter out messages that don't need network retrieval
+    const pendingChunk: Array<{ id: string }> = [];
+
+    for (const rawMsg of chunk) {
+      if (!rawMsg || !rawMsg.id || typeof rawMsg.id !== 'string') {
+        continue;
+      }
+      checked++;
+
+      const alreadyProcessed = await isGmailMessageProcessed(userId, rawMsg.id);
+      if (alreadyProcessed) {
+        skipped++;
         continue;
       }
 
-      // Verified academic email!
-      relevantAcademicMessages++;
-      const authoritativeDate = parsedDetails.internalDate
-        ? new Date(Number(parsedDetails.internalDate)).toISOString()
-        : parsedDetails.date && !Number.isNaN(new Date(parsedDetails.date).getTime())
-        ? new Date(parsedDetails.date).toISOString()
-        : new Date().toISOString();
-
-      await campusEmailsService.persistEmail({
-        userId,
-        sourceAccountEmail: conn.google_email,
-        sourceMessageId: rawMsg.id,
-        sourceThreadId: parsedDetails.threadId,
-        senderEmail: parsedDetails.from,
-        senderName: parsedDetails.from,
-        subject: parsedDetails.subject,
-        receivedAt: authoritativeDate,
-        bodyText: parsedDetails.body || parsedDetails.bodyText || parsedDetails.snippet,
-        snippet: parsedDetails.snippet,
-      });
-      emailsPersisted++;
-
-      // Non-blocking analysis
-      try {
-        const structuredMessage = toStructuredGmailMessage(parsedDetails);
-        const candidate = await noticeAnalyzerService.analyze(structuredMessage);
-        await campusEmailsService.updateAnalysisSuccess(userId, conn.google_email, rawMsg.id, candidate);
-
-        // Track student deadline candidate (tasks are NOT auto-created on sync)
-        const taskInfo = extractDeadlineAndTask(candidate, parsedDetails);
-        if (taskInfo.hasDeadline || candidate.actionRequired || taskInfo.dueDate) {
-          deadlineCandidatesGenerated++;
+      // Check if email already exists in campus_emails for this user
+      const existingEmail = await campusEmailsService.getBySourceMessageId(userId, conn.google_email, rawMsg.id);
+      if (existingEmail && existingEmail.analysisStatus === 'completed') {
+        if (isAuthorizedReviewer) {
+          await maybeCreateNoticeFromExistingEmail(existingEmail);
         }
+        await markGmailMessageAsProcessed(userId, rawMsg.id);
+        skipped++;
+        continue;
+      }
 
-        // Institutional notices: Only if authorized reviewer/admin
-        if (isAuthorizedReviewer && candidate.isCampusWide !== false && !isPersonalOrNonNotice(candidate)) {
-          const dates = candidate.importantDates || [];
-          const eventDate = dates.length > 0 ? dates[0].date : null;
-          const fingerprint = generateNoticeFingerprint(
-            candidate.title,
-            eventDate,
-            candidate.venue,
-            candidate.source?.sender,
-          );
-
-          const suppressed = await isNoticeSuppressed(conn.google_email, rawMsg.id, fingerprint);
-          if (!suppressed) {
-            try {
-              const createdNotice = await noticesService.createFromCandidate(userId, candidate, {
-                connectionId: conn.id,
-                accountEmail: conn.google_email,
-                initialStatus: 'published',
-                sourceReceivedAt: authoritativeDate,
-              });
-              noticesCreated++;
-              if (createdNotice.status === 'pending') {
-                pendingNoticesCount++;
-              }
-            } catch (noticeErr) {
-              if (
-                !(noticeErr instanceof DuplicateNoticeError) &&
-                !(noticeErr instanceof NoticeSuppressedError) &&
-                !(noticeErr instanceof NoticeValidationError)
-              ) {
-                console.error('Notice creation error:', noticeErr);
-              }
-            }
-          }
-        }
-      } catch (analysisErr) {
-        if (analysisErr instanceof NoticeValidationError) {
-          await campusEmailsService.updateAnalysisFailure(
-            userId,
-            conn.google_email,
-            rawMsg.id,
-            'Non-notice email',
-          );
-        } else {
-          console.error(
-            'AI analysis failed for academic message, but email remains stored:',
-            analysisErr instanceof Error ? analysisErr.message : String(analysisErr),
-          );
-          await campusEmailsService.updateAnalysisFailure(
-            userId,
-            conn.google_email,
-            rawMsg.id,
-            analysisErr instanceof Error ? analysisErr.message : 'AI analysis failed',
-          );
-          analysesFailed++;
-          failed++;
+      // If email previously failed analysis, enforce cooldown before retrying to prevent repeated AI quota-burning
+      if (existingEmail && existingEmail.analysisStatus === 'failed') {
+        const cooldownMs = Number(process.env.GMAIL_FAILED_RETRY_COOLDOWN_MS) || 30 * 60 * 1000;
+        const lastAttempt = existingEmail.updatedAt ? new Date(existingEmail.updatedAt).getTime() : 0;
+        if (Date.now() - lastAttempt < cooldownMs) {
+          skipped++;
           continue;
         }
       }
 
-      await markGmailMessageAsProcessed(userId, rawMsg.id);
-      processed++;
-    } catch (msgErr) {
-      console.error(
-        'Gmail sync message processing failed:',
-        msgErr instanceof Error ? msgErr.message : String(msgErr),
-      );
+      pendingChunk.push({ id: rawMsg.id });
+    }
 
-      if (msgErr instanceof DuplicateNoticeError || msgErr instanceof NoticeValidationError) {
-        await markGmailMessageAsProcessed(userId, rawMsg.id);
-        processed++;
-      } else {
+    if (pendingChunk.length === 0) {
+      continue;
+    }
+
+    newMessages += pendingChunk.length;
+
+    // Concurrently fetch message payloads for the chunk with per-message error isolation
+    const fetchedResults = await Promise.all(
+      pendingChunk.map(async (msg) => {
+        try {
+          const messageResponse = await gmail.users.messages.get({
+            userId: 'me',
+            id: msg.id,
+            format: 'full',
+          });
+          const parsed = parseGmailMessageDetails(messageResponse.data, msg.id);
+          return { id: msg.id, details: parsed, error: null };
+        } catch (fetchErr) {
+          console.error(
+            `Failed to fetch Gmail message ${msg.id}:`,
+            fetchErr instanceof Error ? fetchErr.message : String(fetchErr),
+          );
+          return { id: msg.id, details: null, error: fetchErr };
+        }
+      }),
+    );
+
+    // Sequentially evaluate, persist, and publish to maintain deterministic DB ordering
+    for (const result of fetchedResults) {
+      if (!result.details || result.error) {
         failed++;
+        continue;
+      }
+
+      const parsedDetails = result.details;
+      const msgId = result.id;
+
+      try {
+        // Stage 1 classification: evaluate with metadata + snippet (no full body)
+        let classification = classifyEmail({
+          from: parsedDetails.from,
+          subject: parsedDetails.subject,
+          snippet: parsedDetails.snippet,
+        });
+
+        // If Stage 1 is uncertain, evaluate with body text in Stage 2
+        if (classification.outcome === 'uncertain') {
+          classification = classifyEmail({
+            from: parsedDetails.from,
+            subject: parsedDetails.subject,
+            snippet: parsedDetails.snippet,
+            bodyText: parsedDetails.bodyText || parsedDetails.body || parsedDetails.snippet,
+          });
+        }
+
+        // Filter out non-academic / personal / promotional emails
+        const isPersonalOrPromo = !classification.isAcademic || classification.outcome === 'personal';
+        const shouldIgnore = isPersonalOrPromo;
+
+        if (shouldIgnore) {
+          // Personal Email Zero-Persistence:
+          // Non-academic and personal emails are NEVER inserted into campus_emails.
+          // Only mark as processed in processed_gmail_messages for deduplication.
+          await markGmailMessageAsProcessed(userId, msgId);
+          ignoredMessages++;
+          processed++;
+          continue;
+        }
+
+        // Verified academic email!
+        relevantAcademicMessages++;
+        const authoritativeDate = parsedDetails.internalDate
+          ? new Date(Number(parsedDetails.internalDate)).toISOString()
+          : parsedDetails.date && !Number.isNaN(new Date(parsedDetails.date).getTime())
+          ? new Date(parsedDetails.date).toISOString()
+          : new Date().toISOString();
+
+        await campusEmailsService.persistEmail({
+          userId,
+          sourceAccountEmail: conn.google_email,
+          sourceMessageId: msgId,
+          sourceThreadId: parsedDetails.threadId,
+          senderEmail: parsedDetails.from,
+          senderName: parsedDetails.from,
+          subject: parsedDetails.subject,
+          receivedAt: authoritativeDate,
+          bodyText: parsedDetails.body || parsedDetails.bodyText || parsedDetails.snippet,
+          snippet: parsedDetails.snippet,
+        });
+        emailsPersisted++;
+
+        // Candidate extraction: Try AI analysis first; fall back to deterministic heuristics
+        const structuredMessage = toStructuredGmailMessage(parsedDetails);
+        let candidate: NoticeCandidate | null = null;
+        let analysisSucceeded = false;
+
+        try {
+          candidate = await noticeAnalyzerService.analyze(structuredMessage);
+          analysisSucceeded = true;
+        } catch (aiErr) {
+          if (aiErr instanceof NoticeValidationError) {
+            // Definitively non-notice academic email
+            await campusEmailsService.updateAnalysisFailure(
+              userId,
+              conn.google_email,
+              msgId,
+              'Non-notice email',
+            );
+          } else {
+            console.warn(
+              `AI analysis failed for message ${msgId}, engaging deterministic heuristic fallback:`,
+              aiErr instanceof Error ? aiErr.message : String(aiErr),
+            );
+
+            // Deterministic heuristic fallback using existing extractor & validator
+            try {
+              const rawHeuristic = extractHeuristicCandidate(structuredMessage);
+              candidate = validateNoticeCandidate(rawHeuristic, {
+                provider: 'gmail',
+                messageId: msgId,
+                sender: parsedDetails.from || 'University',
+                subject: parsedDetails.subject || 'Campus Notice',
+              });
+              analysisSucceeded = true;
+            } catch (heuristicErr) {
+              console.error(
+                `Heuristic fallback also failed for message ${msgId}:`,
+                heuristicErr instanceof Error ? heuristicErr.message : String(heuristicErr),
+              );
+              await campusEmailsService.updateAnalysisFailure(
+                userId,
+                conn.google_email,
+                msgId,
+                aiErr instanceof Error ? aiErr.message : 'Analysis failed',
+              );
+              analysesFailed++;
+              failed++;
+              // Double failure: Keep raw email stored in campus_emails with analysis_status = 'failed'.
+              // Do NOT mark as processed in processed_gmail_messages, so it remains recoverable.
+              // Repeated AI hammering is prevented by the 30-minute cooldown on failed campus_emails.
+              continue;
+            }
+          }
+        }
+
+        if (analysisSucceeded && candidate) {
+          await campusEmailsService.updateAnalysisSuccess(userId, conn.google_email, msgId, candidate);
+
+          // Track student deadline candidate (tasks are NOT auto-created on sync)
+          const taskInfo = extractDeadlineAndTask(candidate, parsedDetails);
+          if (taskInfo.hasDeadline || candidate.actionRequired || taskInfo.dueDate) {
+            deadlineCandidatesGenerated++;
+          }
+
+          // Institutional notices: Only if authorized reviewer/admin
+          if (isAuthorizedReviewer && candidate.isCampusWide !== false && !isPersonalOrNonNotice(candidate)) {
+            const dates = candidate.importantDates || [];
+            const eventDate = dates.length > 0 ? dates[0].date : null;
+            const fingerprint = generateNoticeFingerprint(
+              candidate.title,
+              eventDate,
+              candidate.venue,
+              candidate.source?.sender,
+            );
+
+            const suppressed = await isNoticeSuppressed(conn.google_email, msgId, fingerprint);
+            if (!suppressed) {
+              try {
+                const createdNotice = await noticesService.createFromCandidate(userId, candidate, {
+                  connectionId: conn.id,
+                  accountEmail: conn.google_email,
+                  initialStatus: 'published',
+                  sourceReceivedAt: authoritativeDate,
+                });
+                noticesCreated++;
+                if (createdNotice.status === 'pending') {
+                  pendingNoticesCount++;
+                }
+              } catch (noticeErr) {
+                if (
+                  !(noticeErr instanceof DuplicateNoticeError) &&
+                  !(noticeErr instanceof NoticeSuppressedError) &&
+                  !(noticeErr instanceof NoticeValidationError)
+                ) {
+                  console.error('Notice creation error:', noticeErr);
+                }
+              }
+            }
+          }
+        }
+
+        await markGmailMessageAsProcessed(userId, msgId);
+        processed++;
+      } catch (msgErr) {
+        console.error(
+          'Gmail sync message processing failed:',
+          msgErr instanceof Error ? msgErr.message : String(msgErr),
+        );
+
+        if (msgErr instanceof DuplicateNoticeError || msgErr instanceof NoticeValidationError) {
+          await markGmailMessageAsProcessed(userId, msgId);
+          processed++;
+        } else {
+          failed++;
+        }
       }
     }
   }

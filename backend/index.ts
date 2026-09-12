@@ -11,7 +11,8 @@ import noticesRouter from './routes/notices.route.js';
 import notificationsRouter from './routes/notifications.route.js';
 
 import { clerkAuth, requireAuthMiddleware } from './middleware/requireAuth.js';
-
+import { globalApiLimiter } from './middleware/rateLimiter.js';
+import type { Request, Response, NextFunction } from 'express';
 
 const app = express();
 
@@ -67,6 +68,10 @@ app.use(clerkAuth);
 
 // Define API router
 const apiRouter = express.Router();
+
+// Apply global API rate limiter to all API endpoints
+apiRouter.use(globalApiLimiter);
+
 apiRouter.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
@@ -83,6 +88,33 @@ apiRouter.use('/campus-items', campusItemsRouter);
 // Mount under both /api and / to handle both direct /api routes and Vercel serverless rewrites
 app.use('/api', apiRouter);
 app.use('/', apiRouter);
+
+// Centralized production error handler
+// Note: Express requires all 4 parameters (err, req, res, next) for error-handling middleware signature
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction): void => {
+  const errorObj = err as { type?: string; status?: number; statusCode?: number; message?: string } | null;
+
+  // Handle JSON parse errors from body-parser/express.json()
+  if (errorObj?.type === 'entity.parse.failed' || (errorObj?.status === 400 && 'body' in (err as object))) {
+    res.status(400).json({ error: 'Malformed JSON payload' });
+    return;
+  }
+
+  // Log full error details securely on the server
+  console.error('Unhandled server error:', err);
+
+  // Return generic sanitized error response to client without leaking internal stacks/details
+  const statusCode = typeof errorObj?.statusCode === 'number'
+    ? errorObj.statusCode
+    : typeof errorObj?.status === 'number'
+      ? errorObj.status
+      : 500;
+
+  res.status(statusCode >= 400 && statusCode < 600 ? statusCode : 500).json({
+    error: statusCode === 404 ? 'Not Found' : 'Internal Server Error',
+  });
+});
 
 export { app };
 export default app;
