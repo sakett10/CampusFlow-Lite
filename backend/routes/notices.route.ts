@@ -7,6 +7,7 @@ import {
 } from '../middleware/requireAuth.js';
 import {
   noticesService,
+  parseMonthRange,
   DuplicateNoticeError,
   InvalidNoticeStateTransitionError,
   NoticeNotFoundError,
@@ -36,7 +37,19 @@ router.get('/', requireAuth(), async (req, res) => {
 
   try {
     const reviewer = isReviewer(req);
-    const { status, category, priority, search } = req.query;
+    const { status, category, priority, search, month } = req.query;
+
+    let monthRange: { start: string; end: string } | undefined;
+    if (month !== undefined) {
+      if (typeof month !== 'string') {
+        return res.status(400).json({ error: 'Invalid month format. Expected YYYY-MM (e.g. 2026-09)' });
+      }
+      const range = parseMonthRange(month);
+      if (!range) {
+        return res.status(400).json({ error: 'Invalid month format. Expected YYYY-MM (e.g. 2026-09)' });
+      }
+      monthRange = range;
+    }
 
     const notices = await noticesService.getAll({
       isReviewer: reviewer,
@@ -45,6 +58,7 @@ router.get('/', requireAuth(), async (req, res) => {
       category: typeof category === 'string' ? (category as NoticeCategory) : undefined,
       priority: typeof priority === 'string' ? (priority as NoticePriority) : undefined,
       search: typeof search === 'string' ? search : undefined,
+      monthRange,
     });
 
     return res.json(notices);

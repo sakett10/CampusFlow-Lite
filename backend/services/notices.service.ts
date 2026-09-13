@@ -215,6 +215,37 @@ export function isPersonalAccountEmail(email?: string | null): boolean {
   return false;
 }
 
+/**
+ * Validates and converts a YYYY-MM month parameter into an exclusive date range.
+ * Examples:
+ *   '2026-09' -> { start: '2026-09-01 00:00:00', end: '2026-10-01 00:00:00' }
+ *   '2026-12' -> { start: '2026-12-01 00:00:00', end: '2027-01-01 00:00:00' }
+ *
+ * Rejects malformed values: '2026', '09-2026', '2026-9', 'abc', '2026-13', '2026-00'.
+ */
+export function parseMonthRange(monthStr: unknown): { start: string; end: string } | null {
+  if (typeof monthStr !== 'string') return null;
+  const match = monthStr.match(/^(\d{4})-(0[1-9]|1[0-2])$/);
+  if (!match) return null;
+
+  const year = parseInt(match[1], 10);
+  const month = parseInt(match[2], 10);
+
+  const startYear = year;
+  const startMonth = String(month).padStart(2, '0');
+  const start = `${startYear}-${startMonth}-01 00:00:00`;
+
+  let nextYear = year;
+  let nextMonth = month + 1;
+  if (nextMonth > 12) {
+    nextMonth = 1;
+    nextYear += 1;
+  }
+  const end = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01 00:00:00`;
+
+  return { start, end };
+}
+
 export interface NoticeFilters {
   isReviewer: boolean;
   userId?: string;
@@ -222,6 +253,7 @@ export interface NoticeFilters {
   category?: NoticeCategory;
   priority?: NoticePriority;
   search?: string;
+  monthRange?: { start: string; end: string };
 }
 
 export const noticesService = {
@@ -479,6 +511,21 @@ export const noticesService = {
         `(notices.title ILIKE $${idx} OR notices.summary ILIKE $${idx} OR notices.venue ILIKE $${idx} OR notices.audience ILIKE $${idx})`,
       );
       values.push(term);
+      idx++;
+    }
+
+    // Month-scoped notice filtering:
+    // We filter on COALESCE(notices.source_received_at, notices.published_at, notices.created_at)
+    // because this is the canonical chronology timestamp used for ordering notices in CampusFlow-Lite:
+    // 1. source_received_at for Gmail-synced notices
+    // 2. published_at for official published circulars
+    // 3. created_at as immutable fallback
+    // The filter is applied with parameterized SQL >= start AND < end (exclusive boundary).
+    if (filters.monthRange) {
+      conditions.push(
+        `COALESCE(notices.source_received_at, notices.published_at, notices.created_at) >= $${idx++} AND COALESCE(notices.source_received_at, notices.published_at, notices.created_at) < $${idx++}`,
+      );
+      values.push(filters.monthRange.start, filters.monthRange.end);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';

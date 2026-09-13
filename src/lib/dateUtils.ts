@@ -173,3 +173,51 @@ export function formatTaskDueDate(dueDateStr: string | null | undefined): string
 
   return `Due ${formatted}`;
 }
+
+/**
+ * Returns current year and month as a standard YYYY-MM key (e.g. "2026-09").
+ */
+export function getCurrentMonthKey(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+}
+
+/**
+ * Formats a YYYY-MM key for presentation (e.g. "2026-09" -> "September 2026").
+ */
+export function formatMonthDisplay(monthKey: string): string {
+  if (!monthKey || !/^\d{4}-\d{2}$/.test(monthKey)) return monthKey;
+  const [yearStr, monthStr] = monthKey.split('-');
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const date = new Date(year, month - 1, 1);
+  return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+/**
+ * Computes an adjacent month key offset by delta months (e.g. delta = -1 for previous month).
+ */
+export function getAdjacentMonthKey(monthKey: string, delta: number): string {
+  if (!monthKey || !/^\d{4}-\d{2}$/.test(monthKey)) return getCurrentMonthKey();
+  const [yearStr, monthStr] = monthKey.split('-');
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const date = new Date(year, month - 1 + delta, 1);
+  const nextYear = date.getFullYear();
+  const nextMonth = String(date.getMonth() + 1).padStart(2, '0');
+  return `${nextYear}-${nextMonth}`;
+}
+
+/**
+ * Extracts a YYYY-MM key from an ISO timestamp or Date instance.
+ */
+export function extractMonthKey(isoOrDate: string | Date | null | undefined): string | null {
+  if (!isoOrDate) return null;
+  const d = typeof isoOrDate === 'string' ? new Date(isoOrDate) : isoOrDate;
+  if (Number.isNaN(d.getTime())) return null;
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+}

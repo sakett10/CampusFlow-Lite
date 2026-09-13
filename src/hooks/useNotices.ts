@@ -7,6 +7,7 @@ export interface NoticeFiltersState {
   category?: NoticeCategory | 'all';
   priority?: NoticePriority | 'all';
   search?: string;
+  month?: string;
 }
 
 export function useNotices(initialFilters?: NoticeFiltersState) {
@@ -65,6 +66,9 @@ export function useNotices(initialFilters?: NoticeFiltersState) {
       }
       if (active.search && active.search.trim()) {
         params.set('search', active.search.trim());
+      }
+      if (active.month && active.month !== 'all') {
+        params.set('month', active.month);
       }
 
       const queryStr = params.toString() ? `?${params.toString()}` : '';
