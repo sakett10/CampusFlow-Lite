@@ -134,6 +134,9 @@ export interface GmailSyncStats {
   ignoredMessages?: number;
   deadlineCandidatesGenerated?: number;
   tasksGenerated?: number;
+  inProgress?: boolean;
+  interrupted?: boolean;
+  message?: string;
 }
 
 export interface CampusEmail {
