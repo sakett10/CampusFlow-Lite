@@ -9,9 +9,19 @@ export function useGmailAutoSync(intervalMs = 300000, enabled = true) { // 5 min
   const [syncStats, setSyncStats] = useState<GmailSyncStats | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
 
-  const { getToken } = useAuth();
+  const { getToken, userId } = useAuth();
   const isSyncingRef = useRef(false);
   const isConnectedRef = useRef(isConnected);
+
+  // Clear sync state when authenticated user changes
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setIsConnected(false);
+    setIsSyncing(false);
+    setLastSyncTime(null);
+    setSyncStats(null);
+    setSyncError(null);
+  }, [userId]);
 
   useEffect(() => {
     isConnectedRef.current = isConnected;
@@ -110,9 +120,12 @@ export function useGmailAutoSync(intervalMs = 300000, enabled = true) { // 5 min
             }
 
             // 2. Check client-side fallback storage (protects against rapid page refreshes, tab duplications)
+            const userKey = userId ? `campusflow:last_auto_sync:${userId}` : null;
             if (shouldAutoSync && typeof window !== 'undefined' && window.sessionStorage) {
               try {
-                const clientLastSyncStr = window.sessionStorage.getItem('campusflow:last_auto_sync');
+                const clientLastSyncStr =
+                  (userKey ? window.sessionStorage.getItem(userKey) : null) ||
+                  window.sessionStorage.getItem('campusflow:last_auto_sync');
                 if (clientLastSyncStr) {
                   const clientLastSync = Number(clientLastSyncStr);
                   if (!Number.isNaN(clientLastSync) && now - clientLastSync < AUTO_SYNC_COOLDOWN_MS) {
@@ -127,6 +140,9 @@ export function useGmailAutoSync(intervalMs = 300000, enabled = true) { // 5 min
             if (shouldAutoSync) {
               if (typeof window !== 'undefined' && window.sessionStorage) {
                 try {
+                  if (userKey) {
+                    window.sessionStorage.setItem(userKey, String(now));
+                  }
                   window.sessionStorage.setItem('campusflow:last_auto_sync', String(now));
                 } catch {
                   // Ignore storage access errors
@@ -153,7 +169,7 @@ export function useGmailAutoSync(intervalMs = 300000, enabled = true) { // 5 min
       isMounted = false;
       clearInterval(interval);
     };
-  }, [getToken, intervalMs, enabled]);
+  }, [getToken, intervalMs, enabled, userId]);
 
   return {
     isConnected,

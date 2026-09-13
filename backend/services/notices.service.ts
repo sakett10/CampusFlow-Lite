@@ -182,6 +182,7 @@ const mapRowToNotice = (row: Record<string, unknown>, userId?: string): Notice =
     sourceMessageId: (row.source_message_id as string) || null,
     sourceSender: (row.source_sender as string) || null,
     sourceSubject: (row.source_subject as string) || null,
+    sourceType: (row.source_type as 'institutional' | 'gmail_personal') || (row.source_provider === 'gmail' || row.source_message_id ? 'gmail_personal' : 'institutional'),
     status: row.status as NoticeStatus,
     isConverted,
     convertedToTaskId,
@@ -197,6 +198,23 @@ const mapRowToNotice = (row: Record<string, unknown>, userId?: string): Notice =
   };
 };
 
+export function isPersonalAccountEmail(email?: string | null): boolean {
+  if (!email) return false;
+  const lower = email.toLowerCase().trim();
+  if (lower.includes('student.')) return true;
+  if (
+    lower.endsWith('@gmail.com') ||
+    lower.endsWith('@googlemail.com') ||
+    lower.endsWith('@yahoo.com') ||
+    lower.endsWith('@outlook.com') ||
+    lower.endsWith('@hotmail.com') ||
+    lower.endsWith('@icloud.com')
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export interface NoticeFilters {
   isReviewer: boolean;
   userId?: string;
@@ -210,7 +228,13 @@ export const noticesService = {
   createFromCandidate: async (
     userId: string,
     candidate: NoticeCandidate,
-    sourceMeta?: { connectionId?: string; accountEmail?: string; initialStatus?: NoticeStatus; sourceReceivedAt?: string | null },
+    sourceMeta?: {
+      connectionId?: string;
+      accountEmail?: string;
+      initialStatus?: NoticeStatus;
+      sourceReceivedAt?: string | null;
+      sourceType?: 'institutional' | 'gmail_personal';
+    },
   ): Promise<Notice> => {
     // 1. Exclude personal / candidate verification emails
     if (isPersonalOrNonNotice(candidate)) {
@@ -222,6 +246,21 @@ export const noticesService = {
     const validated = validateNoticeCandidate(candidate, candidate.source);
     const id = randomUUID();
     const status: NoticeStatus = sourceMeta?.initialStatus || 'pending';
+    const accountEmail = sourceMeta?.accountEmail || (validated.source?.sender ? validated.source.sender : null);
+    const isPersonalAccount = isPersonalAccountEmail(accountEmail);
+    const isCreatorReviewer =
+      isReviewerUserId(userId) ||
+      (process.env.NODE_ENV !== 'production' &&
+        (userId.startsWith('reviewer') || userId.startsWith('admin')));
+    const sourceType: 'institutional' | 'gmail_personal' =
+      sourceMeta?.sourceType ||
+      (isCreatorReviewer && !isPersonalAccount ? 'institutional' : 'gmail_personal');
+
+    if (sourceType === 'gmail_personal') {
+      if (!userId || !userId.trim()) {
+        throw new Error('Personal notices require an immutable owner userId');
+      }
+    }
 
     const dates = validated.importantDates || [];
     const eventDate = dates.length > 0 ? dates[0].date : null;
@@ -242,15 +281,15 @@ export const noticesService = {
       throw new NoticeSuppressedError('Notice was previously deleted or suppressed');
     }
 
-    // 3. Check account-scoped duplicate by messageId in connected account
-    if (sourceMeta?.accountEmail && validated.source.messageId) {
+    // 3. Check user-scoped duplicate by messageId for personal notices, or account-scoped for institutional
+    if (validated.source.messageId) {
       const { rows: existingRows } = await pool.query(
         `
         SELECT id FROM notices
-        WHERE source_account_email = $1 AND source_message_id = $2
+        WHERE created_by_user_id = $1 AND source_message_id = $2
         LIMIT 1
         `,
-        [sourceMeta.accountEmail, validated.source.messageId],
+        [userId, validated.source.messageId],
       );
 
       if (existingRows.length > 0) {
@@ -283,11 +322,12 @@ export const noticesService = {
         source_message_id,
         source_sender,
         source_subject,
+        source_type,
         status,
         published_at,
         source_received_at
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
       ) RETURNING *
     `;
 
@@ -310,6 +350,7 @@ export const noticesService = {
       validated.source.messageId || null,
       validated.source.sender || null,
       validated.source.subject || null,
+      sourceType,
       status,
       isPublished ? (sourceReceivedAt || new Date().toISOString()) : null,
       sourceReceivedAt,
@@ -318,7 +359,7 @@ export const noticesService = {
     const { rows } = await pool.query(query, values);
     const notice = mapRowToNotice(rows[0]);
 
-    if (isPublished) {
+    if (isPublished && sourceType === 'institutional') {
       const isCampusNotice =
         isReviewerUserId(userId) ||
         (process.env.NODE_ENV !== 'production' && userId === 'admin');
@@ -348,64 +389,74 @@ export const noticesService = {
       ? "(notices.created_by_user_id LIKE 'reviewer%' OR notices.created_by_user_id LIKE 'admin%')"
       : "FALSE";
 
-    // Strict account isolation:
-    // Any notice not created by an authorized reviewer or admin is a private notice
-    // and MUST only be visible to its creator.
-    // Institutional visibility requires explicit reviewer/admin authorization.
-    if (!filters.isReviewer) {
-      if (filters.userId) {
+    // Strict tenant isolation:
+    // 1. Personal Gmail data (source_type = 'gmail_personal') MUST ONLY EVER be accessible to its exact creator (created_by_user_id = $userId).
+    //    ADMIN_USER_IDS / REVIEWER_USER_IDS must NEVER grant access to another user's gmail_personal notices.
+    // 2. Institutional notices (source_type = 'institutional') are visible according to reviewer/institutional rules:
+    //    - Reviewers can view all institutional notices (or filtered by status).
+    //    - Students can only view published institutional notices.
+    if (filters.userId) {
+      if (!filters.isReviewer) {
+        // Regular student:
+        // - Personal: only their own
+        // - Institutional: only published ones from authorized reviewers
         if (filters.status) {
           conditions.push(`(
-            (notices.status = $${idx} AND (
-              notices.created_by_user_id = ANY($${idx + 2}::text[]) OR
-              ${reviewerPrefixCheck}
-            )) OR
-            (notices.created_by_user_id = $${idx + 1} AND notices.status = $${idx})
+            (notices.source_type = 'gmail_personal' AND notices.created_by_user_id = $${idx} AND notices.status = $${idx + 1})
+            OR
+            (notices.source_type = 'institutional' AND notices.status = 'published' AND notices.status = $${idx + 1} AND (
+              notices.created_by_user_id = ANY($${idx + 2}::text[]) OR ${reviewerPrefixCheck}
+            ))
           )`);
-          values.push(filters.status, filters.userId, authorizedReviewers);
+          values.push(filters.userId, filters.status, authorizedReviewers);
           idx += 3;
         } else {
           conditions.push(`(
-            (notices.status = 'published' AND (
-              notices.created_by_user_id = ANY($${idx + 1}::text[]) OR
-              ${reviewerPrefixCheck}
-            )) OR
-            (notices.created_by_user_id = $${idx})
+            (notices.source_type = 'gmail_personal' AND notices.created_by_user_id = $${idx})
+            OR
+            (notices.source_type = 'institutional' AND notices.status = 'published' AND (
+              notices.created_by_user_id = ANY($${idx + 1}::text[]) OR ${reviewerPrefixCheck}
+            ))
           )`);
           values.push(filters.userId, authorizedReviewers);
           idx += 2;
         }
       } else {
-        conditions.push(`(
-          notices.status = 'published' AND (
-            notices.created_by_user_id = ANY($${idx}::text[]) OR
-            ${reviewerPrefixCheck}
-          )
-        )`);
-        values.push(authorizedReviewers);
-        idx++;
+        // Reviewer/admin:
+        // - Personal: ONLY their own gmail_personal notices (never another user's!)
+        // - Institutional: all institutional notices from authorized reviewers
         if (filters.status) {
-          conditions.push(`notices.status = $${idx++}`);
-          values.push(filters.status);
+          conditions.push(`(
+            (notices.source_type = 'gmail_personal' AND notices.created_by_user_id = $${idx} AND notices.status = $${idx + 1})
+            OR
+            (notices.source_type = 'institutional' AND notices.status = $${idx + 1} AND (
+              notices.created_by_user_id = ANY($${idx + 2}::text[]) OR ${reviewerPrefixCheck}
+            ))
+          )`);
+          values.push(filters.userId, filters.status, authorizedReviewers);
+          idx += 3;
+        } else {
+          conditions.push(`(
+            (notices.source_type = 'gmail_personal' AND notices.created_by_user_id = $${idx})
+            OR
+            (notices.source_type = 'institutional' AND (
+              notices.created_by_user_id = ANY($${idx + 1}::text[]) OR ${reviewerPrefixCheck}
+            ))
+          )`);
+          values.push(filters.userId, authorizedReviewers);
+          idx += 2;
         }
       }
     } else {
-      if (filters.userId) {
-        conditions.push(`(
-          notices.created_by_user_id = ANY($${idx + 1}::text[]) OR
-          ${reviewerPrefixCheck} OR
-          notices.created_by_user_id = $${idx}
-        )`);
-        values.push(filters.userId, authorizedReviewers);
-        idx += 2;
-      } else {
-        conditions.push(`(
-          notices.created_by_user_id = ANY($${idx}::text[]) OR
-          ${reviewerPrefixCheck}
-        )`);
-        values.push(authorizedReviewers);
-        idx++;
-      }
+      // Unauthenticated (or institutional-only query without user context):
+      // Only published institutional notices, NEVER any personal notices
+      conditions.push(`(
+        notices.source_type = 'institutional' AND notices.status = 'published' AND (
+          notices.created_by_user_id = ANY($${idx}::text[]) OR ${reviewerPrefixCheck}
+        )
+      )`);
+      values.push(authorizedReviewers);
+      idx++;
       if (filters.status) {
         conditions.push(`notices.status = $${idx++}`);
         values.push(filters.status);
@@ -495,6 +546,18 @@ export const noticesService = {
     const notice = mapRowToNotice(rows[0], userId);
     const isNonProd = process.env.NODE_ENV !== 'production';
     const isOwner = Boolean(userId && notice.createdByUserId === userId);
+
+    // Strict account isolation:
+    // If personal Gmail notice: ONLY the exact owner can access.
+    // Reviewers/admins CANNOT bypass personal ownership!
+    if (notice.sourceType === 'gmail_personal') {
+      if (!isOwner) {
+        return null;
+      }
+      return notice;
+    }
+
+    // Institutional notice authorization:
     const isCampusNotice =
       notice.createdByUserId === SYSTEM_INSTITUTIONAL_USER_ID ||
       isReviewerUserId(notice.createdByUserId) ||
@@ -502,7 +565,6 @@ export const noticesService = {
         (notice.createdByUserId.startsWith('reviewer') ||
           notice.createdByUserId.startsWith('admin')));
 
-    // Strict account isolation: Gmail-derived notices are strictly private to their owner unless institutional
     if (!isOwner && !isCampusNotice) {
       return null;
     }
@@ -793,24 +855,38 @@ export const noticesService = {
       const rawNotice = noticeRows[0];
       const isNonProd = process.env.NODE_ENV !== 'production';
       const isOwner = Boolean(rawNotice.created_by_user_id === userId);
+
+      const isPersonalNotice = rawNotice.source_type === 'gmail_personal';
       const isCampusNotice =
-        rawNotice.created_by_user_id === SYSTEM_INSTITUTIONAL_USER_ID ||
-        isReviewerUserId(rawNotice.created_by_user_id) ||
-        (isNonProd &&
-          (rawNotice.created_by_user_id.startsWith('reviewer') ||
-            rawNotice.created_by_user_id.startsWith('admin')));
+        rawNotice.source_type === 'institutional' &&
+        (rawNotice.created_by_user_id === SYSTEM_INSTITUTIONAL_USER_ID ||
+          isReviewerUserId(rawNotice.created_by_user_id) ||
+          (isNonProd &&
+            (rawNotice.created_by_user_id.startsWith('reviewer') ||
+              rawNotice.created_by_user_id.startsWith('admin'))));
 
-      // 2. Verify source notice is accessible to the authenticated user
-      if (!isOwner && !isCampusNotice) {
-        throw new UnauthorizedNoticeAccessError(
-          "You cannot convert another student's notice to a task",
-        );
-      }
+      // Strict tenant isolation:
+      // If personal Gmail notice: ONLY the owner can convert it to a task.
+      // Reviewers/admins CANNOT convert another user's personal notice!
+      if (isPersonalNotice) {
+        if (!isOwner) {
+          throw new UnauthorizedNoticeAccessError(
+            "You cannot convert another student's notice to a task",
+          );
+        }
+      } else {
+        // 2. Verify source notice is accessible to the authenticated user
+        if (!isOwner && !isCampusNotice) {
+          throw new UnauthorizedNoticeAccessError(
+            "You cannot convert another student's notice to a task",
+          );
+        }
 
-      if (rawNotice.status === 'archived' || (!isOwner && rawNotice.status !== 'published')) {
-        throw new UnauthorizedNoticeAccessError(
-          'Notice is archived or cannot be converted to a task',
-        );
+        if (rawNotice.status === 'archived' || (!isOwner && rawNotice.status !== 'published')) {
+          throw new UnauthorizedNoticeAccessError(
+            'Notice is archived or cannot be converted to a task',
+          );
+        }
       }
 
       // 3. Check per-user duplicate conversion using the same transaction client
@@ -892,8 +968,8 @@ export const noticesService = {
         const updateRes = await client.query(
           `UPDATE notices
            SET is_converted = TRUE, converted_to_task_id = $1, converted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-           WHERE id = $2`,
-          [task.id, rawNotice.id],
+           WHERE id = $2 AND created_by_user_id = $3`,
+          [task.id, rawNotice.id, userId],
         );
 
         if (updateRes.rowCount !== 1) {
@@ -930,12 +1006,18 @@ export const noticesService = {
     }
   },
 
-  getBySourceMessageId: async (accountEmail: string, messageId: string): Promise<Notice | null> => {
+  getBySourceMessageId: async (
+    userId: string,
+    accountEmail: string,
+    messageId: string,
+  ): Promise<Notice | null> => {
     const { rows } = await pool.query(
-      `SELECT * FROM notices WHERE source_account_email = $1 AND source_message_id = $2 LIMIT 1`,
-      [accountEmail, messageId],
+      `SELECT * FROM notices 
+       WHERE created_by_user_id = $1 AND source_account_email = $2 AND source_message_id = $3 
+       LIMIT 1`,
+      [userId, accountEmail, messageId],
     );
     if (rows.length === 0) return null;
-    return mapRowToNotice(rows[0]);
+    return mapRowToNotice(rows[0], userId);
   },
 };

@@ -151,6 +151,7 @@ export interface Notice {
   sourceMessageId?: string | null;
   sourceSender?: string | null;
   sourceSubject?: string | null;
+  sourceType: 'institutional' | 'gmail_personal';
   status: NoticeStatus;
   isConverted?: boolean;
   convertedToTaskId?: string | null;

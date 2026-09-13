@@ -87,6 +87,13 @@ export function useNotices(initialFilters?: NoticeFiltersState) {
     }
   }, [getAuthHeaders, filters]);
 
+  // Reset notices when the authenticated user identity changes
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNotices([]);
+    setError(null);
+  }, [user?.id]);
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadNotices();

@@ -14,6 +14,7 @@ import {
   isPersonalOrNonNotice,
   isNoticeSuppressed,
   generateNoticeFingerprint,
+  isPersonalAccountEmail,
 } from './notices.service.js';
 import { NoticeValidationError, validateNoticeCandidate } from './noticeValidator.js';
 import { notificationsService } from './notifications.service.js';
@@ -446,9 +447,15 @@ export async function reclassifyExistingCampusEmails(userId: string): Promise<{
 
       if (candidateToUse) {
         try {
+          const isPersonalAccount = isPersonalAccountEmail(email.sourceAccountEmail);
+          const isCreatorReviewer = isReviewerUserId(userId);
+          const syncSourceType: 'institutional' | 'gmail_personal' =
+            (!isPersonalAccount && isCreatorReviewer) ? 'institutional' : 'gmail_personal';
+
           await noticesService.createFromCandidate(userId, candidateToUse, {
             accountEmail: email.sourceAccountEmail,
             initialStatus: 'published',
+            sourceType: syncSourceType,
           });
         } catch {
           // Notice may already exist or suppressed
@@ -753,7 +760,7 @@ export const syncGmailMessagesForUser = async (
 
   const maybeCreateNoticeFromExistingEmail = async (email: CampusEmail): Promise<boolean> => {
     if (!isAuthorizedReviewer) return false;
-    const existingNotice = await noticesService.getBySourceMessageId(conn.google_email, email.sourceMessageId);
+    const existingNotice = await noticesService.getBySourceMessageId(userId, conn.google_email, email.sourceMessageId);
     if (existingNotice) return false;
 
     const candidate = campusEmailToCandidate(email);
@@ -774,11 +781,16 @@ export const syncGmailMessagesForUser = async (
     if (suppressed) return false;
 
     try {
+      const isPersonalAccount = isPersonalAccountEmail(conn.google_email);
+      const syncSourceType: 'institutional' | 'gmail_personal' =
+        (!isPersonalAccount && isAuthorizedReviewer) ? 'institutional' : 'gmail_personal';
+
       const createdNotice = await noticesService.createFromCandidate(userId, candidate, {
         connectionId: conn.id,
         accountEmail: conn.google_email,
         initialStatus: 'published',
         sourceReceivedAt: email.receivedAt || null,
+        sourceType: syncSourceType,
       });
       noticesCreated++;
       if (createdNotice.status === 'pending') {
@@ -1022,11 +1034,16 @@ export const syncGmailMessagesForUser = async (
             const suppressed = await isNoticeSuppressed(conn.google_email, msgId, fingerprint);
             if (!suppressed) {
               try {
+                const isPersonalAccount = isPersonalAccountEmail(conn.google_email);
+                const syncSourceType: 'institutional' | 'gmail_personal' =
+                  (!isPersonalAccount && isAuthorizedReviewer) ? 'institutional' : 'gmail_personal';
+
                 const createdNotice = await noticesService.createFromCandidate(userId, candidate, {
                   connectionId: conn.id,
                   accountEmail: conn.google_email,
                   initialStatus: 'published',
                   sourceReceivedAt: authoritativeDate,
+                  sourceType: syncSourceType,
                 });
                 noticesCreated++;
                 if (createdNotice.status === 'pending') {

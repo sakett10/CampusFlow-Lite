@@ -133,7 +133,7 @@ router.post('/', requireReviewerMiddleware, async (req, res) => {
   const userId = auth.userId!;
 
   try {
-    const notice = await noticesService.createFromCandidate(userId, req.body);
+    const notice = await noticesService.createFromCandidate(userId, req.body, { sourceType: 'institutional' });
     return res.status(201).json(notice);
   } catch (error) {
     if (error instanceof NoticeValidationError) {

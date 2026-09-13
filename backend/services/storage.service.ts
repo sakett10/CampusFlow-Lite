@@ -185,9 +185,13 @@ export const storageService = {
         `
         SELECT * FROM notices 
         WHERE status = 'published' AND (
-          created_by_user_id = $1 OR
-          created_by_user_id = ANY($2::text[]) OR
-          ($3 AND (created_by_user_id LIKE 'reviewer%' OR created_by_user_id LIKE 'admin%'))
+          (source_type = 'gmail_personal' AND created_by_user_id = $1)
+          OR
+          (source_type = 'institutional' AND (
+            created_by_user_id = $1 OR
+            created_by_user_id = ANY($2::text[]) OR
+            ($3 AND (created_by_user_id LIKE 'reviewer%' OR created_by_user_id LIKE 'admin%'))
+          ))
         )
         ORDER BY COALESCE(source_received_at, published_at, created_at) DESC, created_at DESC
         `,

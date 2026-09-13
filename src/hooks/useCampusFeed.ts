@@ -1,13 +1,21 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { CampusItem } from '../lib/types';
 import { campusApi } from '../api/campusApi';
-import { useAuth } from '@clerk/clerk-react';
+import { useAuth, useUser } from '@clerk/clerk-react';
 
 export function useCampusFeed() {
   const [items, setItems] = useState<CampusItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { getToken } = useAuth();
+  const { user } = useUser();
+
+  // Reset feed items when the authenticated user identity changes
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setItems([]);
+    setError(null);
+  }, [user?.id]);
 
   const loadItems = useCallback(async () => {
     setIsLoading(true);

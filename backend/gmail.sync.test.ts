@@ -350,7 +350,7 @@ describe('Gmail Sync Foundation (Phase C1 + C3 Automatic Notice Pipeline)', () =
       await pool.query(
         `
         INSERT INTO gmail_connections (id, user_id, google_email, access_token, refresh_token, expiry_date)
-        VALUES ($1, 'user_A', 'userA@vitstudent.ac.in', 'token_A', 'refresh_A', 1700000000)
+        VALUES ($1, 'user_A', 'reviewer@vit.ac.in', 'token_A', 'refresh_A', 1700000000)
         `,
         [randomUUID()],
       );

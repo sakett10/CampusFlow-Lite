@@ -170,10 +170,14 @@ export default function Settings() {
       setLastSyncedAt(new Date().toISOString());
 
       let statusMsg = '';
-      if (academicCount === 0 && tasksAdded === 0) {
+      if (stats.inProgress) {
+        statusMsg = 'Sync is currently running in the background. Please check back in a moment.';
+      } else if (academicCount === 0 && tasksAdded === 0 && (stats.noticesCreated ?? 0) === 0) {
         statusMsg = 'Sync complete. 0 relevant academic emails found.';
       } else {
-        statusMsg = `Sync complete: ${academicCount} relevant academic email${academicCount === 1 ? '' : 's'} found, ${tasksAdded} deadline task${tasksAdded === 1 ? '' : 's'} added.`;
+        const noticesAdded = stats.noticesCreated ?? 0;
+        const noticePart = noticesAdded > 0 ? `, ${noticesAdded} notice${noticesAdded === 1 ? '' : 's'} published` : '';
+        statusMsg = `Sync complete: ${academicCount} relevant academic email${academicCount === 1 ? '' : 's'} found, ${tasksAdded} deadline task${tasksAdded === 1 ? '' : 's'} added${noticePart}.`;
       }
 
       setSyncStatusText(statusMsg);

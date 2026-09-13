@@ -92,6 +92,7 @@ export function createTestPool(): pg.Pool {
       source_message_id TEXT,
       source_sender TEXT,
       source_subject TEXT,
+      source_type TEXT NOT NULL DEFAULT 'institutional' CHECK (source_type IN ('institutional', 'gmail_personal')),
       status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'published', 'rejected', 'archived')) DEFAULT 'pending',
       is_converted BOOLEAN NOT NULL DEFAULT FALSE,
       converted_to_task_id UUID,
@@ -99,7 +100,8 @@ export function createTestPool(): pg.Pool {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       published_at TIMESTAMP,
-      source_received_at TIMESTAMP
+      source_received_at TIMESTAMP,
+      CONSTRAINT uq_notices_user_msg UNIQUE (created_by_user_id, source_message_id)
     );
 
     CREATE TABLE notifications (
