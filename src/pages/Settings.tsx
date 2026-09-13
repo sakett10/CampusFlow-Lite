@@ -285,13 +285,13 @@ export default function Settings() {
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`inline-flex min-h-9 items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                className={`inline-flex min-h-9 items-center gap-2 px-3.5 py-1.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all cursor-pointer ${
                   active
                     ? 'bg-[var(--cf-brand)] text-white shadow-xs'
                     : 'text-[var(--cf-text-secondary)] hover:bg-[var(--cf-surface-muted)] hover:text-[var(--cf-text)] border border-transparent'
                 }`}
               >
-                <Icon className="w-3.5 h-3.5" />
+                <Icon className="w-4 h-4" />
                 {tab.label}
               </button>
             );
@@ -302,7 +302,7 @@ export default function Settings() {
       {/* Global Feedback Banner */}
       {feedbackMessage && (
         <div
-          className={`p-3.5 rounded-xl border flex items-center justify-between text-xs font-medium ${
+          className={`p-3.5 rounded-xl border flex items-center justify-between text-sm font-medium ${
             feedbackMessage.type === 'success'
               ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
               : 'bg-rose-50 text-rose-800 border-rose-200'
@@ -339,14 +339,14 @@ export default function Settings() {
                 )}
                 <div>
                   <div className="flex items-center gap-2.5">
-                    <h2 className="font-sans-display text-base font-bold text-[var(--cf-text)]">
+                    <h2 className="font-sans-display text-lg sm:text-xl font-bold text-[var(--cf-text)]">
                       {user?.fullName || (isDemo ? 'Alex Chen' : 'Student Account')}
                     </h2>
-                    <span className="font-mono text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                    <span className="font-mono text-xs uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
                       {userRole}
                     </span>
                   </div>
-                  <p className="mt-0.5 text-xs text-[var(--cf-text-secondary)]">
+                  <p className="mt-0.5 text-sm text-[var(--cf-text-secondary)]">
                     {user?.primaryEmailAddress?.emailAddress ||
                       (isDemo ? 'alex.chen@university.edu' : 'No email associated')}
                   </p>
@@ -359,32 +359,32 @@ export default function Settings() {
                   size="sm"
                   onClick={() => signOut({ redirectUrl: '/' })}
                   leftIcon={<LogOut className="w-3.5 h-3.5 text-slate-600" />}
-                  className="text-xs font-semibold"
+                  className="text-sm font-semibold"
                 >
                   Sign Out
                 </Button>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
               <div className="rounded-xl border border-[var(--cf-border-subtle)] bg-[var(--cf-surface-muted)] p-4 space-y-1">
-                <span className="font-semibold text-[var(--cf-text-tertiary)] uppercase tracking-wider text-[10px]">
+                <span className="font-semibold text-[var(--cf-text-tertiary)] uppercase tracking-wider text-xs">
                   Authentication Provider
                 </span>
                 <p className="font-medium text-[var(--cf-text)]">Clerk Identity Management</p>
-                <p className="text-[var(--cf-text-secondary)]">Signed session with JWT authentication</p>
+                <p className="text-xs text-[var(--cf-text-secondary)]">Signed session with JWT authentication</p>
               </div>
 
               <div className="rounded-xl border border-[var(--cf-border-subtle)] bg-[var(--cf-surface-muted)] p-4 space-y-1">
-                <span className="font-semibold text-[var(--cf-text-tertiary)] uppercase tracking-wider text-[10px]">
+                <span className="font-semibold text-[var(--cf-text-tertiary)] uppercase tracking-wider text-xs">
                   Data Storage & Isolation
                 </span>
                 <p className="font-medium text-[var(--cf-text)]">PostgreSQL Database</p>
-                <p className="text-[var(--cf-text-secondary)]">Per-user isolated tenant records</p>
+                <p className="text-xs text-[var(--cf-text-secondary)]">Per-user isolated tenant records</p>
               </div>
             </div>
 
-            <div className="border-t border-[var(--cf-border-subtle)] pt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-[var(--cf-text-secondary)]">
+            <div className="border-t border-[var(--cf-border-subtle)] pt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-[var(--cf-text-secondary)]">
               <span>Legal policies and terms</span>
               <div className="flex gap-4 font-medium">
                 <Link to="/privacy" className="text-[var(--cf-brand)] hover:underline">
@@ -411,19 +411,19 @@ export default function Settings() {
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h2 className="font-sans-display text-base font-bold text-[var(--cf-text)]">
+                    <h2 className="font-sans-display text-lg sm:text-xl font-bold text-[var(--cf-text)]">
                       Google Workspace / Gmail
                     </h2>
                     {gmailLoading ? (
-                      <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                      <span className="font-mono text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
                         Checking...
                       </span>
                     ) : gmailConnected ? (
-                      <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold">
+                      <span className="font-mono text-xs px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold">
                         Connected
                       </span>
                     ) : (
-                      <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                      <span className="font-mono text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
                         Disconnected
                       </span>
                     )}
@@ -431,15 +431,15 @@ export default function Settings() {
 
                   {gmailConnected && gmailEmail ? (
                     <div className="mt-1 space-y-0.5">
-                      <p className="text-xs font-semibold text-[var(--cf-text)]">
+                      <p className="text-sm font-semibold text-[var(--cf-text)]">
                         Account: <span className="font-mono">{gmailEmail}</span>
                       </p>
-                      <p className="text-xs text-[var(--cf-text-secondary)]">
+                      <p className="text-sm text-[var(--cf-text-secondary)]">
                         Last synced: {formatRelativeTime(lastSyncedAt)}
                       </p>
                     </div>
                   ) : (
-                    <p className="mt-1 text-xs text-[var(--cf-text-secondary)] leading-relaxed max-w-lg">
+                    <p className="mt-1 text-sm text-[var(--cf-text-secondary)] leading-relaxed max-w-lg">
                       Connect your college Gmail account to automatically scan for campus circulars, exam schedules, and submission deadlines.
                     </p>
                   )}
@@ -481,20 +481,20 @@ export default function Settings() {
             </div>
 
             {syncStatusText && (
-              <div className="p-3 rounded-lg bg-[var(--cf-surface-muted)] border border-[var(--cf-border-subtle)] text-xs text-[var(--cf-text-secondary)]">
+              <div className="p-3 rounded-lg bg-[var(--cf-surface-muted)] border border-[var(--cf-border-subtle)] text-sm text-[var(--cf-text-secondary)]">
                 {syncStatusText}
               </div>
             )}
 
             {/* Scope & Explanation */}
-            <div className="space-y-4 text-xs">
-              <h3 className="font-sans-display text-xs font-bold uppercase tracking-wider text-[var(--cf-text-tertiary)] flex items-center gap-1.5">
+            <div className="space-y-4 text-sm">
+              <h3 className="font-sans-display text-sm font-bold uppercase tracking-wider text-[var(--cf-text-tertiary)] flex items-center gap-1.5">
                 <Shield className="w-3.5 h-3.5 text-slate-700" />
                 Integration Scope & Transparency
               </h3>
               <div className="rounded-xl border border-[var(--cf-border-subtle)] bg-[var(--cf-surface-muted)] p-4 space-y-2.5 text-[var(--cf-text-secondary)] leading-relaxed">
                 <p>
-                  • <strong>Read-only access:</strong> CampusFlow requests <code className="font-mono text-[11px] bg-white px-1 py-0.5 rounded border border-slate-200">gmail.readonly</code> permission. It cannot compose, delete, or modify any messages.
+                  • <strong>Read-only access:</strong> CampusFlow requests <code className="font-mono text-xs bg-white px-1 py-0.5 rounded border border-slate-200">gmail.readonly</code> permission. It cannot compose, delete, or modify any messages.
                 </p>
                 <p>
                   • <strong>Academic purpose:</strong> The integration is used exclusively to parse student notices, examination circulars, and course assignment deadlines.
@@ -512,8 +512,8 @@ export default function Settings() {
       {activeTab === 'notifications' && (
         <Card padding="lg" className="space-y-6 border-[var(--cf-border)]">
           <div>
-            <h2 className="font-sans-display text-base font-bold text-[var(--cf-text)]">Notification Alerts</h2>
-            <p className="text-xs text-[var(--cf-text-secondary)] mt-1">
+            <h2 className="font-sans-display text-lg sm:text-xl font-bold text-[var(--cf-text)]">Notification Alerts</h2>
+            <p className="text-sm text-[var(--cf-text-secondary)] mt-1">
               Configure browser notifications and in-app deadline reminder alerts.
             </p>
           </div>
@@ -526,17 +526,17 @@ export default function Settings() {
                   <Laptop className="h-4 w-4" />
                 </div>
                 <div>
-                  <h3 className="text-xs font-bold text-[var(--cf-text)]">Browser Push Notifications</h3>
-                  <p className="text-xs text-[var(--cf-text-secondary)] mt-0.5">
+                  <h3 className="text-base font-bold text-[var(--cf-text)]">Browser Push Notifications</h3>
+                  <p className="text-sm text-[var(--cf-text-secondary)] mt-0.5">
                     Receive immediate browser notifications when critical campus notices are published.
                   </p>
                 </div>
               </div>
 
               {browserPermission === 'unsupported' ? (
-                <span className="text-xs text-slate-400">Not supported on this browser</span>
+                <span className="text-sm text-slate-400">Not supported on this browser</span>
               ) : browserPermission === 'granted' ? (
-                <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200">
+                <span className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200">
                   <CheckCircle className="w-3.5 h-3.5" />
                   Enabled
                 </span>
@@ -562,13 +562,13 @@ export default function Settings() {
                   <Bell className="h-4 w-4" />
                 </div>
                 <div>
-                  <h3 className="text-xs font-bold text-[var(--cf-text)]">In-App Deadline Reminders</h3>
-                  <p className="text-xs text-[var(--cf-text-secondary)] mt-0.5">
+                  <h3 className="text-base font-bold text-[var(--cf-text)]">In-App Deadline Reminders</h3>
+                  <p className="text-sm text-[var(--cf-text-secondary)] mt-0.5">
                     Active. Displays task deadline reminders dynamically based on scheduled reminder rules.
                   </p>
                 </div>
               </div>
-              <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200">
+              <span className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200">
                 <CheckCircle className="w-3.5 h-3.5" />
                 Active
               </span>
@@ -595,7 +595,7 @@ export default function Settings() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-3">
-              <h2 className="font-sans-display text-base font-bold text-[var(--cf-text)]">
+              <h2 className="font-sans-display text-lg font-bold text-[var(--cf-text)]">
                 Connect Gmail
               </h2>
               <button
@@ -608,7 +608,7 @@ export default function Settings() {
               </button>
             </div>
 
-            <p className="mb-5 text-xs leading-relaxed text-[var(--cf-text-secondary)]">
+            <p className="mb-5 text-sm leading-relaxed text-[var(--cf-text-secondary)]">
               CampusFlow requests read-only access to scan college emails and circulars for academic deadlines and notices. Access is strictly scoped to your private workflow.
             </p>
 
@@ -650,19 +650,19 @@ export default function Settings() {
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-rose-50 text-rose-700 border border-rose-200">
                 <AlertTriangle className="h-4 w-4" />
               </div>
-              <h2 className="font-sans-display text-base font-bold text-[var(--cf-text)]">
+              <h2 className="font-sans-display text-lg font-bold text-[var(--cf-text)]">
                 Disconnect Gmail
               </h2>
             </div>
 
-            <p className="mb-3 text-xs leading-relaxed text-[var(--cf-text-secondary)]">
+            <p className="mb-3 text-sm leading-relaxed text-[var(--cf-text-secondary)]">
               Are you sure you want to disconnect {gmailEmail ? <strong className="text-[var(--cf-text)]">{gmailEmail}</strong> : 'your mailbox'}?
               <br /><br />
               Stored OAuth access tokens will be purged immediately.
             </p>
 
             <div className="mb-4 rounded-lg bg-[var(--cf-surface-muted)] p-3 border border-[var(--cf-border-subtle)]">
-              <label className="flex items-start gap-2.5 text-xs text-[var(--cf-text)] cursor-pointer select-none">
+              <label className="flex items-start gap-2.5 text-sm text-[var(--cf-text)] cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={purgeData}
@@ -673,7 +673,7 @@ export default function Settings() {
                   <span className="font-semibold text-[var(--cf-text)]">
                     Also delete synced Gmail data from CampusFlow
                   </span>
-                  <p className="text-[11px] text-[var(--cf-text-secondary)] leading-relaxed">
+                  <p className="text-xs text-[var(--cf-text-secondary)] leading-relaxed">
                     This removes imported email content and Gmail sync history. Your tasks and noticeboard notices will be preserved.
                   </p>
                 </div>
@@ -681,7 +681,7 @@ export default function Settings() {
             </div>
 
             {disconnectError && (
-              <div className="mb-4 rounded-lg bg-rose-50 p-2.5 text-xs text-rose-700 border border-rose-200">
+              <div className="mb-4 rounded-lg bg-rose-50 p-2.5 text-sm text-rose-700 border border-rose-200">
                 {disconnectError}
               </div>
             )}

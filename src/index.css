@@ -1,10 +1,33 @@
 @import 'tailwindcss';
+@import "@fontsource-variable/geist";
 
 @theme {
-  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-display: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'Geist Variable', 'Geist', 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Geist Variable', 'Geist', 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-reading: 'Source Sans 3', Georgia, ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Typography Scale Refinements (Readability Elevation) */
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.25rem;
+
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.45rem;
+
+  --text-base: 1rem;
+  --text-base--line-height: 1.55rem;
+
+  --text-lg: 1.125rem;
+  --text-lg--line-height: 1.65rem;
+
+  --text-xl: 1.3125rem;
+  --text-xl--line-height: 1.75rem;
+
+  --text-2xl: 1.4375rem;
+  --text-2xl--line-height: 1.875rem;
+
+  --text-3xl: 2.125rem;
+  --text-3xl--line-height: 2.5rem;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -73,8 +96,8 @@
   --cf-overlay: rgba(15, 23, 42, 0.45);
 
   /* Typography Families */
-  --cf-font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --cf-font-display: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --cf-font-sans: 'Geist Variable', 'Geist', 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --cf-font-display: 'Geist Variable', 'Geist', 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --cf-font-reading: 'Source Sans 3', Georgia, ui-sans-serif, system-ui, sans-serif;
   --cf-font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
@@ -83,41 +106,53 @@
   --cf-text-hero-line: 1.18;
   --cf-text-hero-weight: 700;
 
-  --cf-text-display-size: 28px;
-  --cf-text-display-line: 34px;
+  --cf-text-display-size: clamp(32px, 3.2vw, 38px);
+  --cf-text-display-line: 1.22;
   --cf-text-display-weight: 700;
+
+  --cf-text-section-size: 22px;
+  --cf-text-section-line: 28px;
+  --cf-text-section-weight: 700;
 
   --cf-text-title-size: 18px;
   --cf-text-title-line: 26px;
   --cf-text-title-weight: 600;
 
-  --cf-text-subtitle-size: 15px;
-  --cf-text-subtitle-line: 22px;
+  --cf-text-subtitle-size: 16px;
+  --cf-text-subtitle-line: 24px;
   --cf-text-subtitle-weight: 500;
 
-  --cf-text-reading-size: 15px;
-  --cf-text-reading-line: 24px;
+  --cf-text-reading-size: 15.5px;
+  --cf-text-reading-line: 25px;
   --cf-text-reading-weight: 400;
 
-  --cf-text-body-size: 14px;
-  --cf-text-body-line: 20px;
+  --cf-text-body-size: 15px;
+  --cf-text-body-line: 23px;
   --cf-text-body-weight: 400;
 
-  --cf-text-body-strong-size: 14px;
-  --cf-text-body-strong-line: 20px;
+  --cf-text-body-strong-size: 15px;
+  --cf-text-body-strong-line: 23px;
   --cf-text-body-strong-weight: 600;
 
-  --cf-text-caption-size: 13px;
-  --cf-text-caption-line: 18px;
+  --cf-text-caption-size: 13.5px;
+  --cf-text-caption-line: 19px;
   --cf-text-caption-weight: 400;
 
-  --cf-text-label-size: 12px;
-  --cf-text-label-line: 16px;
+  --cf-text-label-size: 14px;
+  --cf-text-label-line: 19px;
   --cf-text-label-weight: 600;
 
-  --cf-text-micro-size: 11px;
-  --cf-text-micro-line: 14px;
+  --cf-text-micro-size: 13px;
+  --cf-text-micro-line: 18px;
   --cf-text-micro-weight: 500;
+
+  /* Neo-Brutalism & Glassmorphism Tokens */
+  --cf-border-brutal: #0F172A;
+  --cf-shadow-brutal: 4px 4px 0px #0F172A;
+  --cf-shadow-brutal-sm: 2px 2px 0px #0F172A;
+  --cf-shadow-brutal-lg: 6px 6px 0px #0F172A;
+  --cf-glass-bg: rgba(255, 255, 255, 0.88);
+  --cf-glass-border: rgba(15, 23, 42, 0.12);
 
   /* Spacing */
   --cf-space-1: 4px;
@@ -178,6 +213,34 @@ body {
 .font-mono-meta {
   font-family: var(--cf-font-mono);
   font-feature-settings: 'tnum' 1, 'zero' 1;
+}
+
+/* Glassmorphism & Neumorphism Utility Classes */
+.cf-glass-panel {
+  background-color: var(--cf-glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.cf-glass-card {
+  background-color: var(--cf-glass-bg);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.cf-neumorph-control {
+  box-shadow: 1px 1px 2px rgba(15, 23, 42, 0.05), -1px -1px 2px rgba(255, 255, 255, 0.8);
+}
+
+.cf-neumorph-pill {
+  box-shadow: 1px 1px 2px rgba(15, 23, 42, 0.06), -1px -1px 2px rgba(255, 255, 255, 0.9);
+}
+
+.cf-neumorph-pill-active {
+  box-shadow: inset 1px 1px 2px rgba(15, 23, 42, 0.12), inset -1px -1px 2px rgba(255, 255, 255, 0.6);
+  background-color: #F1F5F9;
+  color: #0F172A;
+  font-weight: 600;
 }
 
 /* Notice Reading Container (Optimal readability: 680–740px max width) */

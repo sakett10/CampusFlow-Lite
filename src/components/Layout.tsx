@@ -25,7 +25,7 @@ export default function Layout() {
               <p className="text-[length:var(--cf-text-subtitle-size)] font-bold tracking-tight text-[var(--cf-text)]">
                 CampusFlow
               </p>
-              <p className="text-[10px] uppercase font-bold tracking-wider text-[var(--cf-text-tertiary)]">
+              <p className="text-xs uppercase font-bold tracking-wider text-[var(--cf-text-tertiary)]">
                 Student Hub
               </p>
             </div>
@@ -34,7 +34,7 @@ export default function Layout() {
         </div>
 
         {isConnected && (
-          <div className="px-6 py-2 border-b border-[var(--cf-border-subtle)] bg-[var(--cf-surface-muted)]/50 flex items-center justify-between text-[10px] font-mono text-[var(--cf-text-secondary)]">
+          <div className="px-6 py-2 border-b border-[var(--cf-border-subtle)] bg-[var(--cf-surface-muted)]/50 flex items-center justify-between text-xs font-mono text-[var(--cf-text-secondary)]">
             <span className="flex items-center gap-1.5">
               <span className={`h-1.5 w-1.5 rounded-full ${isSyncing ? 'bg-amber-400 animate-ping' : 'bg-emerald-400'}`} />
               {isSyncing ? 'Syncing Gmail...' : 'Gmail Auto-Sync'}
@@ -54,7 +54,7 @@ export default function Layout() {
         <div className="p-4 border-t border-[var(--cf-border)] flex items-center justify-between">
           <div className="flex items-center gap-2">
             <UserButton />
-            <span className="text-xs font-medium text-[var(--cf-text-secondary)]">Account</span>
+            <span className="text-sm font-medium text-[var(--cf-text-secondary)]">Account</span>
           </div>
         </div>
       </aside>

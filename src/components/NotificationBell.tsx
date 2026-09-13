@@ -73,7 +73,7 @@ export const NotificationBell: React.FC = () => {
       >
         <Bell className="h-4.5 w-4.5" aria-hidden="true" />
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--cf-danger)] px-1 text-[10px] font-bold font-mono text-white shadow-xs ring-2 ring-[var(--cf-surface)]">
+          <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--cf-danger)] px-1 text-xs font-bold font-mono text-white shadow-xs ring-2 ring-[var(--cf-surface)]">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
@@ -95,11 +95,11 @@ export const NotificationBell: React.FC = () => {
             {/* Header */}
             <div className="flex items-center justify-between border-b border-[var(--cf-border-subtle)] pb-2 px-1">
               <div className="flex items-center gap-2">
-                <span className="font-bold text-xs text-[var(--cf-text)] uppercase tracking-wider font-mono">
+                <span className="font-bold text-sm text-[var(--cf-text)] uppercase tracking-wider font-mono">
                   Notifications
                 </span>
                 {unreadCount > 0 && (
-                  <span className="rounded-full bg-[var(--cf-danger-subtle)] border border-[var(--cf-danger-border)] px-2 py-0.5 text-[10px] font-bold font-mono text-[var(--cf-danger)]">
+                  <span className="rounded-full bg-[var(--cf-danger-subtle)] border border-[var(--cf-danger-border)] px-2 py-0.5 text-xs font-bold font-mono text-[var(--cf-danger)]">
                     {unreadCount} new
                   </span>
                 )}
@@ -108,9 +108,9 @@ export const NotificationBell: React.FC = () => {
                 <button
                   type="button"
                   onClick={markAllAsRead}
-                  className="text-[11px] font-medium text-[var(--cf-brand)] hover:underline flex items-center gap-1 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--cf-brand)] rounded"
+                  className="text-xs font-medium text-[var(--cf-brand)] hover:underline flex items-center gap-1 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--cf-brand)] rounded"
                 >
-                  <Check className="w-3 h-3" /> Mark all read
+                  <Check className="w-3.5 h-3.5" /> Mark all read
                 </button>
               )}
             </div>
@@ -118,7 +118,7 @@ export const NotificationBell: React.FC = () => {
             {/* List of Notification Rows */}
             <div className="max-h-80 overflow-y-auto space-y-1.5 pr-1 divide-y divide-[var(--cf-border-subtle)]">
               {notifications.length === 0 ? (
-                <div className="py-8 text-center text-xs text-[var(--cf-text-tertiary)] font-reading">
+                <div className="py-8 text-center text-sm text-[var(--cf-text-tertiary)] font-reading">
                   No notifications right now.
                 </div>
               ) : (
@@ -137,7 +137,7 @@ export const NotificationBell: React.FC = () => {
                     <div className="flex-1 min-w-0 space-y-0.5">
                       <div className="flex items-center justify-between gap-1">
                         <p
-                          className={`text-xs truncate ${
+                          className={`text-sm truncate ${
                             n.isRead ? 'font-medium text-[var(--cf-text)]' : 'font-bold text-[var(--cf-text)]'
                           }`}
                         >
@@ -150,14 +150,14 @@ export const NotificationBell: React.FC = () => {
                           />
                         )}
                       </div>
-                      <p className="text-[11px] text-[var(--cf-text-secondary)] line-clamp-2 leading-relaxed font-reading">
+                      <p className="text-xs text-[var(--cf-text-secondary)] line-clamp-2 leading-relaxed font-reading">
                         {n.message}
                       </p>
-                      <div className="flex items-center justify-between pt-1 text-[10px] text-[var(--cf-text-tertiary)] font-mono-meta">
+                      <div className="flex items-center justify-between pt-1 text-xs text-[var(--cf-text-tertiary)] font-mono-meta">
                         <span>{new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                         {n.link && (
                           <span className="flex items-center gap-0.5 text-[var(--cf-brand)] font-medium">
-                            View <ExternalLink className="w-2.5 h-2.5" />
+                            View <ExternalLink className="w-3 h-3" />
                           </span>
                         )}
                       </div>

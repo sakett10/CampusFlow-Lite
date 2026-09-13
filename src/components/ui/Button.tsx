@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'ai' | 'danger';
+export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'ai' | 'danger' | 'brutal' | 'brutal-secondary';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -42,6 +42,10 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         'bg-[var(--cf-ai)] text-[var(--cf-ai-fg)] hover:bg-[var(--cf-ai-hover)] shadow-sm',
       danger:
         'bg-[var(--cf-danger)] text-white hover:opacity-90 shadow-sm',
+      brutal:
+        'bg-slate-900 text-white border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[4px_4px_0px_#0f172a] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none rounded-lg',
+      'brutal-secondary':
+        'bg-white text-slate-900 border-2 border-slate-900 shadow-[3px_3px_0px_#0f172a] hover:bg-slate-50 hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[4px_4px_0px_#0f172a] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none rounded-lg',
     };
 
     const sizes: Record<ButtonSize, string> = {
