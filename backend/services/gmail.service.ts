@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { randomUUID, createHash } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import { pool } from '../db.js';
+import { isServerlessEnvironment } from '../config.js';
 import type { GmailSyncStats, StructuredGmailMessage, NoticeCandidate, NoticeCategory, NoticePriority, CampusEmail } from '../types.js';
 
 import { noticeAnalyzerService, extractHeuristicCandidate } from './noticeAnalyzer.service.js';
@@ -523,6 +524,8 @@ export function getHistoricalSyncQuery(days = 90): string {
 export interface GmailSyncOptions {
   query?: string;
   syncHistorical?: boolean;
+  deadlineMs?: number;
+  maxExecutionTimeMs?: number;
 }
 
 // Local in-memory set kept as a lightweight single-process optimization
@@ -576,7 +579,7 @@ const activeSyncUsers = new Set<string>();
 
 export const syncGmailMessagesForUser = async (
   userId: string,
-  batchSize = 30,
+  batchSize = 15,
   isReviewer?: boolean,
   options?: GmailSyncOptions,
 ): Promise<GmailSyncStats> => {
@@ -676,6 +679,15 @@ export const syncGmailMessagesForUser = async (
     },
   );
 
+  const startTime = Date.now();
+  const isServerless = isServerlessEnvironment();
+  // In serverless, default to 8000ms deadline to safely return before Vercel's default 10s timeout
+  const timeoutBudgetMs = options?.maxExecutionTimeMs ?? (isServerless ? 8000 : 0);
+  const effectiveDeadline = options?.deadlineMs ?? (timeoutBudgetMs > 0 ? startTime + timeoutBudgetMs : undefined);
+
+  let interrupted = false;
+  let interruptMessage: string | undefined = undefined;
+
   // Fetch messages with pagination support strictly bounded by batchSize / historical query
   const rawMessages: Array<{ id?: string | null; threadId?: string | null }> = [];
   let pageToken: string | undefined = undefined;
@@ -683,6 +695,11 @@ export const syncGmailMessagesForUser = async (
   const targetLimit = options?.syncHistorical ? Math.max(batchSize, 100) : batchSize;
 
   do {
+    if (effectiveDeadline && Date.now() >= effectiveDeadline) {
+      interrupted = true;
+      interruptMessage = 'Sync paused to avoid serverless timeout; remaining messages will be processed on next sync';
+      break;
+    }
     const remaining = targetLimit - rawMessages.length;
     if (remaining <= 0) break;
     const pageSize = Math.min(remaining, 50);
@@ -784,6 +801,12 @@ export const syncGmailMessagesForUser = async (
   // without exceeding Gmail API rate limits or overwhelming serverless connection pools
   const CHUNK_SIZE = 5;
   for (let i = 0; i < rawMessages.length; i += CHUNK_SIZE) {
+    if (effectiveDeadline && Date.now() >= effectiveDeadline) {
+      interrupted = true;
+      interruptMessage = 'Sync paused to avoid serverless timeout; remaining messages will be processed on next sync';
+      break;
+    }
+
     const chunk = rawMessages.slice(i, i + CHUNK_SIZE);
 
     // Filter out messages that don't need network retrieval
@@ -854,6 +877,12 @@ export const syncGmailMessagesForUser = async (
 
     // Sequentially evaluate, persist, and publish to maintain deterministic DB ordering
     for (const result of fetchedResults) {
+      if (effectiveDeadline && Date.now() >= effectiveDeadline) {
+        interrupted = true;
+        interruptMessage = 'Sync paused to avoid serverless timeout; remaining messages will be processed on next sync';
+        break;
+      }
+
       if (!result.details || result.error) {
         failed++;
         continue;
@@ -1032,6 +1061,9 @@ export const syncGmailMessagesForUser = async (
         }
       }
     }
+    if (interrupted) {
+      break;
+    }
   }
 
   // If new pending notices were generated, notify reviewers
@@ -1057,6 +1089,7 @@ export const syncGmailMessagesForUser = async (
       ignoredMessages,
       deadlineCandidatesGenerated,
       tasksGenerated,
+      ...(interrupted ? { interrupted: true, message: interruptMessage } : {}),
     };
   } finally {
     activeSyncUsers.delete(userId);

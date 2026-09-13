@@ -423,7 +423,7 @@ router.post('/sync', requireAuth(), gmailSyncLimiter, async (req, res) => {
     const rawBatchSize = Number(req.body?.batchSize);
     const batchSize = Number.isInteger(rawBatchSize)
       ? Math.min(Math.max(rawBatchSize, 1), 100)
-      : 30;
+      : 15;
     const query = typeof req.body?.query === 'string' ? req.body.query : (typeof req.query?.q === 'string' ? (req.query.q as string) : undefined);
     const syncHistorical = Boolean(req.body?.syncHistorical || req.query?.syncHistorical);
     const stats = await syncGmailMessagesForUser(userId, batchSize, reviewer, { query, syncHistorical });

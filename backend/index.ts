@@ -1,6 +1,10 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import { validateProductionEnv } from './config.js';
+
+// Validate environment configuration in production runtimes before accepting traffic
+validateProductionEnv();
 import campusItemsRouter from './routes/campusItems.route.js';
 import aiRouter from './routes/ai.route.js';
 

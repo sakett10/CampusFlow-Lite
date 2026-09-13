@@ -56,6 +56,10 @@ export function useGmailAutoSync(intervalMs = 300000, enabled = true) { // 5 min
       });
       setLastSyncTime(new Date());
 
+      if (typeof window !== 'undefined' && ((data.noticesCreated ?? 0) > 0 || (data.emailsPersisted ?? 0) > 0)) {
+        window.dispatchEvent(new CustomEvent('campusflow:refresh-notices'));
+        window.dispatchEvent(new CustomEvent('campusflow:refresh-tasks'));
+      }
     } catch (err) {
       setSyncError(err instanceof Error ? err.message : 'Sync failed');
     } finally {
@@ -91,7 +95,45 @@ export function useGmailAutoSync(intervalMs = 300000, enabled = true) { // 5 min
           const connected = Boolean(data.connected);
           setIsConnected(connected);
           if (connected) {
-            triggerSyncRef.current();
+            // Conservative auto-sync cooldown: 10 minutes (600,000ms)
+            // Checks server updatedAt or client sessionStorage to prevent thundering herd on mount/refresh
+            const AUTO_SYNC_COOLDOWN_MS = 10 * 60 * 1000;
+            const now = Date.now();
+            let shouldAutoSync = true;
+
+            // 1. Check server-provided last sync timestamp (updatedAt from gmail_connections)
+            if (data.updatedAt) {
+              const serverLastSync = new Date(data.updatedAt).getTime();
+              if (!Number.isNaN(serverLastSync) && now - serverLastSync < AUTO_SYNC_COOLDOWN_MS) {
+                shouldAutoSync = false;
+              }
+            }
+
+            // 2. Check client-side fallback storage (protects against rapid page refreshes, tab duplications)
+            if (shouldAutoSync && typeof window !== 'undefined' && window.sessionStorage) {
+              try {
+                const clientLastSyncStr = window.sessionStorage.getItem('campusflow:last_auto_sync');
+                if (clientLastSyncStr) {
+                  const clientLastSync = Number(clientLastSyncStr);
+                  if (!Number.isNaN(clientLastSync) && now - clientLastSync < AUTO_SYNC_COOLDOWN_MS) {
+                    shouldAutoSync = false;
+                  }
+                }
+              } catch {
+                // Ignore storage access errors
+              }
+            }
+
+            if (shouldAutoSync) {
+              if (typeof window !== 'undefined' && window.sessionStorage) {
+                try {
+                  window.sessionStorage.setItem('campusflow:last_auto_sync', String(now));
+                } catch {
+                  // Ignore storage access errors
+                }
+              }
+              triggerSyncRef.current();
+            }
           }
         }
       } catch {
