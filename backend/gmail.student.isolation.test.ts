@@ -181,16 +181,25 @@ describe('Gmail Multi-Tenant Security & Role-Scoped Notice Ingestion', () => {
 
     expect(syncRes.status).toBe(200);
     expect(syncRes.body.emailsPersisted).toBe(1);
-    expect(syncRes.body.noticesCreated).toBe(0); // Zero global notices created!
+    expect(syncRes.body.noticesCreated).toBe(1); // Private notice created for Student A
 
     // Email is persisted in campus_emails for Student A
     const { rows: emailRows } = await pool.query('SELECT * FROM campus_emails WHERE user_id = $1', ['student_A']);
     expect(emailRows).toHaveLength(1);
     expect(emailRows[0].source_message_id).toBe('msg_hackathon_1');
 
-    // Global notices table remains EMPTY
-    const { rows: noticeRows } = await pool.query('SELECT * FROM notices');
-    expect(noticeRows).toHaveLength(0);
+    // Global institutional notices table remains EMPTY
+    const { rows: globalNotices } = await pool.query("SELECT * FROM notices WHERE source_type = 'institutional'");
+    expect(globalNotices).toHaveLength(0);
+
+    // Private notice exists for Student A
+    const { rows: personalNotices } = await pool.query("SELECT * FROM notices WHERE created_by_user_id = 'student_A'");
+    expect(personalNotices).toHaveLength(1);
+    expect(personalNotices[0].source_type).toBe('gmail_personal');
+
+    // Student B querying notices sees ZERO
+    const studentBNotices = await request(app).get('/api/notices').set('Authorization', 'Bearer student_B');
+    expect(studentBNotices.body).toHaveLength(0);
   });
 
   it("B. Student A Gmail-derived data cannot appear in Student B's campus feed", async () => {

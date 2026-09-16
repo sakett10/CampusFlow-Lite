@@ -242,7 +242,11 @@ describe('Academic Gmail Pipeline & Deadline Generation Regression Suite (12 Sce
     expect(res.status).toBe(200);
     expect(res.body.relevantAcademicMessages).toBe(1);
     expect(res.body.tasksGenerated).toBe(0); // Zero auto-generated tasks
-    expect(res.body.noticesCreated).toBe(0); // Zero global notices for student
+    expect(res.body.noticesCreated).toBe(1); // Private notice created for student
+
+    // Global institutional notices table remains EMPTY
+    const { rows: globalNotices5 } = await pool.query("SELECT * FROM notices WHERE source_type = 'institutional'");
+    expect(globalNotices5).toHaveLength(0);
 
     // Verify zero tasks were auto-created in assignments table
     const { rows: taskRowsBefore } = await pool.query("SELECT * FROM assignments WHERE user_id = 'student_user'");
@@ -298,10 +302,16 @@ describe('Academic Gmail Pipeline & Deadline Generation Regression Suite (12 Sce
 
     const res = await request(app).post('/api/gmail/sync').set('Authorization', 'Bearer student_user');
     expect(res.status).toBe(200);
-    expect(res.body.noticesCreated).toBe(0);
+    expect(res.body.noticesCreated).toBe(1); // Private notice created for student
 
-    const { rows: notices } = await pool.query('SELECT * FROM notices');
-    expect(notices).toHaveLength(0);
+    // Global institutional notices table remains EMPTY
+    const { rows: publicNotices } = await pool.query("SELECT * FROM notices WHERE source_type = 'institutional'");
+    expect(publicNotices).toHaveLength(0);
+
+    const { rows: personalNotices } = await pool.query(
+      "SELECT * FROM notices WHERE source_type = 'gmail_personal' AND created_by_user_id = 'student_user'",
+    );
+    expect(personalNotices).toHaveLength(1);
   });
 
   // Scenario 7: Reviewer mailbox sync with circular creates published notice
@@ -616,6 +626,6 @@ describe('Academic Gmail Pipeline & Deadline Generation Regression Suite (12 Sce
     expect(res.body.ignoredMessages).toBe(1);
     expect(res.body.relevantAcademicMessages).toBe(1);
     expect(res.body.tasksGenerated).toBe(0); // Zero auto tasks
-    expect(res.body.noticesCreated).toBe(0);
+    expect(res.body.noticesCreated).toBe(1);
   });
 });

@@ -709,5 +709,74 @@ describe('emailClassifier: campus-relevance gate (root-cause regressions)', () =
         expect(getInstitutionForSender('student@mnlumumbai.edu.in')?.id).toBe('mnlu_mumbai');
       });
     });
+
+    describe('Diagnostic Suite: VIT student domain senders (26@vitstudent.ac.in & numeric local-parts)', () => {
+      it('reproduces domain extraction and institution resolution for 26@vitstudent.ac.in', () => {
+        const rawSender = '26@vitstudent.ac.in';
+        expect(extractDomainFromSender(rawSender)).toBe('vitstudent.ac.in');
+        expect(isStudentInstitutionSender(rawSender)).toBe(true);
+        expect(isTrustedInstitutionSender(rawSender)).toBe(false);
+        expect(isCampusAffineSender(rawSender)).toBe(true);
+        expect(getInstitutionForSender(rawSender)?.id).toBe('vit');
+      });
+
+      it('reproduces domain extraction and institution resolution for "26 <26@vitstudent.ac.in>"', () => {
+        const formattedSender = '26 <26@vitstudent.ac.in>';
+        expect(extractDomainFromSender(formattedSender)).toBe('vitstudent.ac.in');
+        expect(isStudentInstitutionSender(formattedSender)).toBe(true);
+        expect(isTrustedInstitutionSender(formattedSender)).toBe(false);
+        expect(isCampusAffineSender(formattedSender)).toBe(true);
+        expect(getInstitutionForSender(formattedSender)?.id).toBe('vit');
+      });
+
+      it('reproduces domain extraction for ordinary @vitstudent.ac.in sender', () => {
+        const ordinarySender = 'Rahul Sharma <rahul.s2023@vitstudent.ac.in>';
+        expect(extractDomainFromSender(ordinarySender)).toBe('vitstudent.ac.in');
+        expect(isStudentInstitutionSender(ordinarySender)).toBe(true);
+        expect(isTrustedInstitutionSender(ordinarySender)).toBe(false);
+        expect(isCampusAffineSender(ordinarySender)).toBe(true);
+        expect(getInstitutionForSender(ordinarySender)?.id).toBe('vit');
+      });
+
+      it('personal student-to-student email from @vitstudent.ac.in is discarded as personal (zero persistence)', () => {
+        const personalEmail = classifyEmail({
+          from: '26 <26@vitstudent.ac.in>',
+          subject: 'where are you?',
+          bodyText: 'Hey, are you free to meet near SJT?',
+        });
+        expect(personalEmail.outcome).toBe('personal');
+        expect(personalEmail.isCampusRelevant).toBe(false);
+        expect(personalEmail.isPersonal).toBe(true);
+      });
+
+      it('legitimate campus notice from @vit.ac.in is classified as campus with high confidence', () => {
+        const officialNotice = classifyEmail({
+          from: 'CoE Office <coe@vit.ac.in>',
+          subject: 'Fall Semester CAT-1 Schedule Announcement',
+          bodyText: 'The Continuous Assessment Test timetable is published on VTOP. Attendance is mandatory.',
+        });
+        expect(officialNotice.outcome).toBe('campus');
+        expect(officialNotice.isCampusRelevant).toBe(true);
+        expect(officialNotice.isAcademic).toBe(true);
+        expect(officialNotice.confidence).toBe('high');
+      });
+
+      it('diagnoses how a campus-relevant broadcast from 26@vitstudent.ac.in behaves in classifier', () => {
+        // When 26@vitstudent.ac.in sends a campus-relevant notice (e.g. club event or symposium)
+        const studentNotice = classifyEmail({
+          from: '26 <26@vitstudent.ac.in>',
+          subject: 'Code2Create Hackathon Registration and Workshop Guidelines',
+          bodyText: 'Registration is now open for the annual hackathon. Submit your team details before the deadline.',
+        });
+
+        // 1. isStudent = true
+        // 2. hasCampusTopic = true
+        // 3. hasAuthority = false (unless club/role pattern matches)
+        // Outcome must be 'uncertain' (NOT personal!), making it campus-relevant for second-stage analysis
+        expect(studentNotice.isCampusRelevant).toBe(true);
+        expect(studentNotice.outcome).toBe('uncertain');
+        expect(studentNotice.isPersonal).toBe(false);
+      });
+    });
   });
 });

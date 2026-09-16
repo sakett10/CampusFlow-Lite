@@ -23,6 +23,7 @@ import { isReviewerUserId } from '../middleware/requireAuth.js';
 import { encryptToken, decryptToken } from './crypto.service.js';
 import { classifyEmail } from './emailClassifier.service.js';
 import { extractDeadlineAndTask } from './deadlineParser.service.js';
+import { isStudentInstitutionSender } from '../config/institutions.js';
 
 export function getOAuthCredentials() {
   const clientId = process.env.GOOGLE_CLIENT_ID || process.env.GMAIL_CLIENT_ID;
@@ -546,11 +547,41 @@ export function getHistoricalSyncQuery(days = 90): string {
   return `after:${yyyy}/${mm}/${dd}`;
 }
 
+export const MAX_RECOVERY_COUNT = 50;
+
+export function getRecoverySyncQuery(days = 14): string {
+  const envDays = process.env.GMAIL_RECOVERY_DAYS ? parseInt(process.env.GMAIL_RECOVERY_DAYS, 10) : NaN;
+  const syncDays = Math.min(Math.max(!Number.isNaN(envDays) && envDays > 0 ? envDays : days, 1), 30);
+  const cutoffDate = new Date(Date.now() - syncDays * 24 * 60 * 60 * 1000);
+  const yyyy = cutoffDate.getFullYear();
+  const mm = String(cutoffDate.getMonth() + 1).padStart(2, '0');
+  const dd = String(cutoffDate.getDate()).padStart(2, '0');
+  return `after:${yyyy}/${mm}/${dd}`;
+}
+
 export interface GmailSyncOptions {
   query?: string;
   syncHistorical?: boolean;
+  recoverHistorical?: boolean;
+  recoveryDays?: number;
+  maxRecoveryCount?: number;
   deadlineMs?: number;
   maxExecutionTimeMs?: number;
+}
+
+export interface GmailRecoveryOptions {
+  recoveryDays?: number;
+  maxCount?: number;
+}
+
+export interface GmailRecoveryStats {
+  evaluatedCount: number;
+  recoveredCount: number;
+  skippedCount: number;
+  noticesCreated: number;
+  tasksGenerated: number;
+  rejectedByClassifier: number;
+  rejectedByAnalyzer: number;
 }
 
 // Local in-memory set kept as a lightweight single-process optimization
@@ -567,9 +598,14 @@ export function campusEmailToCandidate(email: CampusEmail): NoticeCandidate {
     ? (email.category as NoticeCategory)
     : 'general';
 
-  const validPriority = ['urgent', 'high', 'normal', 'low'].includes(email.importance || '')
-    ? (email.importance as NoticePriority)
-    : 'normal';
+  const validPriority: NoticePriority =
+    email.importance === 'urgent'
+      ? 'urgent'
+      : email.importance === 'important' || email.importance === 'high'
+      ? 'important'
+      : email.importance === 'low'
+      ? 'low'
+      : 'normal';
 
   const title = (email.subject && email.subject.trim().length >= 3) ? email.subject.trim() : 'Campus Notice';
   const summary = (email.summary && email.summary.trim().length >= 5)
@@ -598,6 +634,251 @@ export function campusEmailToCandidate(email: CampusEmail): NoticeCandidate {
     },
     isCampusWide: true,
   };
+}
+
+export async function recoverHistoricalGmailMessages(
+  userId: string,
+  options?: GmailRecoveryOptions,
+): Promise<GmailRecoveryStats> {
+  const stats: GmailRecoveryStats = {
+    evaluatedCount: 0,
+    recoveredCount: 0,
+    skippedCount: 0,
+    noticesCreated: 0,
+    tasksGenerated: 0,
+    rejectedByClassifier: 0,
+    rejectedByAnalyzer: 0,
+  };
+
+  const { rows } = await pool.query(
+    `
+    SELECT id, google_email, access_token, refresh_token, expiry_date
+    FROM gmail_connections
+    WHERE user_id = $1
+    `,
+    [userId],
+  );
+
+  if (rows.length === 0) {
+    throw new GmailNotConnectedError('Gmail account is not connected');
+  }
+
+  const conn = rows[0];
+  const { text: decryptedAccessToken } = decryptToken(conn.access_token);
+  const { text: decryptedRefreshToken } = decryptToken(conn.refresh_token);
+
+  const gmail = createAuthenticatedGmailClient(
+    {
+      accessToken: decryptedAccessToken,
+      refreshToken: decryptedRefreshToken,
+      expiryDate: conn.expiry_date,
+    },
+    async (newTokens) => {
+      if (newTokens.access_token) {
+        await pool.query(
+          `UPDATE gmail_connections SET access_token = $1, expiry_date = COALESCE($2, expiry_date), updated_at = CURRENT_TIMESTAMP WHERE id = $3`,
+          [encryptToken(newTokens.access_token), newTokens.expiry_date ?? null, conn.id],
+        );
+      }
+    },
+  );
+
+  const isAuthorizedReviewer = isReviewerUserId(userId);
+  const rawDays = options?.recoveryDays;
+  const recoveryDays = typeof rawDays === 'number' && rawDays > 0 ? rawDays : 14;
+  const q = getRecoverySyncQuery(recoveryDays);
+  const requestedMax = options?.maxCount || MAX_RECOVERY_COUNT;
+  const boundedLimit = Math.min(Math.max(requestedMax, 1), MAX_RECOVERY_COUNT);
+
+  // 1. Query Gmail API for the bounded date window first
+  const listResponse = (await gmail.users.messages.list({
+    userId: 'me',
+    q,
+    maxResults: boundedLimit,
+  })) as {
+    data: {
+      messages?: Array<{ id?: string | null }>;
+    };
+  };
+
+  const candidateMessages = (listResponse.data.messages || []).slice(0, boundedLimit);
+
+  for (const rawMsg of candidateMessages) {
+    if (!rawMsg?.id || typeof rawMsg.id !== 'string') continue;
+    const msgId = rawMsg.id;
+    stats.evaluatedCount++;
+
+    // Check if notice already exists for this user and message
+    const existingNotice = await noticesService.getBySourceMessageId(userId, conn.google_email, msgId);
+    if (existingNotice) {
+      stats.skippedCount++;
+      continue;
+    }
+
+    // Check if email already exists in campus_emails for this user
+    const existingEmail = await campusEmailsService.getBySourceMessageId(userId, conn.google_email, msgId);
+    if (existingEmail && existingEmail.analysisStatus === 'completed') {
+      const candidate = campusEmailToCandidate(existingEmail);
+      if (candidate.isCampusWide === false || isPersonalOrNonNotice(candidate)) {
+        stats.skippedCount++;
+        continue;
+      }
+
+      const dates = candidate.importantDates || [];
+      const eventDate = dates.length > 0 ? dates[0].date : null;
+      const fingerprint = generateNoticeFingerprint(
+        candidate.title,
+        eventDate,
+        candidate.venue,
+        candidate.source?.sender,
+      );
+
+      const suppressed = await isNoticeSuppressed(conn.google_email, msgId, fingerprint);
+      if (suppressed) {
+        stats.skippedCount++;
+        continue;
+      }
+
+      try {
+        const isPersonalAccount = isPersonalAccountEmail(conn.google_email);
+        const isStudentSender = isStudentInstitutionSender(candidate.source?.sender || '');
+        const isInstitutionalBroadcast = isAuthorizedReviewer && !isPersonalAccount && !isStudentSender;
+        const syncSourceType: 'institutional' | 'gmail_personal' =
+          isInstitutionalBroadcast ? 'institutional' : 'gmail_personal';
+
+        await noticesService.createFromCandidate(userId, candidate, {
+          connectionId: conn.id,
+          accountEmail: conn.google_email,
+          initialStatus: 'published',
+          sourceReceivedAt: existingEmail.receivedAt || null,
+          sourceType: syncSourceType,
+        });
+        stats.noticesCreated++;
+        stats.recoveredCount++;
+      } catch {
+        // Duplicate or suppressed
+      }
+      continue;
+    }
+
+    // Otherwise, fetch payload from Gmail API
+    let messageResponse: { data: Parameters<typeof parseGmailMessageDetails>[0] };
+    try {
+      messageResponse = (await gmail.users.messages.get({
+        userId: 'me',
+        id: msgId,
+        format: 'full',
+      })) as { data: Parameters<typeof parseGmailMessageDetails>[0] };
+    } catch {
+      continue;
+    }
+
+    const parsedDetails = parseGmailMessageDetails(messageResponse.data, msgId);
+    const classification = classifyEmail({
+      sender: parsedDetails.from,
+      subject: parsedDetails.subject,
+      bodyText: parsedDetails.bodyText,
+      snippet: parsedDetails.snippet,
+    });
+
+    if (!classification.isCampusRelevant) {
+      stats.rejectedByClassifier++;
+      continue;
+    }
+
+    const structuredMessage = toStructuredGmailMessage(parsedDetails);
+    let candidate: NoticeCandidate | null;
+
+    try {
+      candidate = await noticeAnalyzerService.analyze(structuredMessage);
+    } catch (aiErr) {
+      if (aiErr instanceof NoticeValidationError) {
+        stats.rejectedByAnalyzer++;
+        continue;
+      }
+      try {
+        const rawCandidate = extractHeuristicCandidate(structuredMessage);
+        candidate = validateNoticeCandidate(rawCandidate, {
+          provider: 'gmail',
+          messageId: msgId,
+          sender: parsedDetails.from || 'University',
+          subject: parsedDetails.subject || 'Campus Notice',
+        });
+      } catch {
+        stats.rejectedByAnalyzer++;
+        continue;
+      }
+    }
+
+    if (!candidate || isPersonalOrNonNotice(candidate)) {
+      stats.rejectedByAnalyzer++;
+      continue;
+    }
+
+    const authoritativeDate = parsedDetails.internalDate
+      ? new Date(Number(parsedDetails.internalDate)).toISOString()
+      : parsedDetails.date && !Number.isNaN(new Date(parsedDetails.date).getTime())
+      ? new Date(parsedDetails.date).toISOString()
+      : new Date().toISOString();
+
+    await campusEmailsService.persistEmail({
+      userId,
+      sourceAccountEmail: conn.google_email,
+      sourceMessageId: msgId,
+      sourceThreadId: parsedDetails.threadId,
+      senderEmail: parsedDetails.from,
+      senderName: parsedDetails.from,
+      subject: parsedDetails.subject,
+      receivedAt: authoritativeDate,
+      bodyText: parsedDetails.bodyText,
+      snippet: parsedDetails.snippet,
+    });
+
+    await campusEmailsService.updateAnalysisSuccess(userId, conn.google_email, msgId, candidate);
+
+    const taskInfo = extractDeadlineAndTask(candidate, parsedDetails);
+    if (taskInfo.hasDeadline || candidate.actionRequired || taskInfo.dueDate) {
+      stats.tasksGenerated++;
+    }
+
+    if (candidate.isCampusWide !== false) {
+      const dates = candidate.importantDates || [];
+      const eventDate = dates.length > 0 ? dates[0].date : null;
+      const fingerprint = generateNoticeFingerprint(
+        candidate.title,
+        eventDate,
+        candidate.venue,
+        candidate.source?.sender,
+      );
+
+      const suppressed = await isNoticeSuppressed(conn.google_email, msgId, fingerprint);
+      if (!suppressed) {
+        try {
+          const isPersonalAccount = isPersonalAccountEmail(conn.google_email);
+          const isStudentSender = isStudentInstitutionSender(candidate.source?.sender || '');
+          const isInstitutionalBroadcast = isAuthorizedReviewer && !isPersonalAccount && !isStudentSender;
+          const syncSourceType: 'institutional' | 'gmail_personal' =
+            isInstitutionalBroadcast ? 'institutional' : 'gmail_personal';
+
+          await noticesService.createFromCandidate(userId, candidate, {
+            connectionId: conn.id,
+            accountEmail: conn.google_email,
+            initialStatus: 'published',
+            sourceReceivedAt: authoritativeDate,
+            sourceType: syncSourceType,
+          });
+          stats.noticesCreated++;
+          stats.recoveredCount++;
+        } catch {
+          // Ignored if duplicate
+        }
+      }
+    }
+
+    await markGmailMessageAsProcessed(userId, msgId);
+  }
+
+  return stats;
 }
 
 const activeSyncUsers = new Set<string>();
@@ -777,7 +1058,6 @@ export const syncGmailMessagesForUser = async (
   const tasksGenerated = 0;
 
   const maybeCreateNoticeFromExistingEmail = async (email: CampusEmail): Promise<boolean> => {
-    if (!isAuthorizedReviewer) return false;
     const existingNotice = await noticesService.getBySourceMessageId(userId, conn.google_email, email.sourceMessageId);
     if (existingNotice) return false;
 
@@ -800,8 +1080,10 @@ export const syncGmailMessagesForUser = async (
 
     try {
       const isPersonalAccount = isPersonalAccountEmail(conn.google_email);
+      const isStudentSender = isStudentInstitutionSender(candidate.source?.sender || '');
+      const isInstitutionalBroadcast = isAuthorizedReviewer && !isPersonalAccount && !isStudentSender;
       const syncSourceType: 'institutional' | 'gmail_personal' =
-        (!isPersonalAccount && isAuthorizedReviewer) ? 'institutional' : 'gmail_personal';
+        isInstitutionalBroadcast ? 'institutional' : 'gmail_personal';
 
       const createdNotice = await noticesService.createFromCandidate(userId, candidate, {
         connectionId: conn.id,
@@ -857,9 +1139,7 @@ export const syncGmailMessagesForUser = async (
       // Check if email already exists in campus_emails for this user
       const existingEmail = await campusEmailsService.getBySourceMessageId(userId, conn.google_email, rawMsg.id);
       if (existingEmail && existingEmail.analysisStatus === 'completed') {
-        if (isAuthorizedReviewer) {
-          await maybeCreateNoticeFromExistingEmail(existingEmail);
-        }
+        await maybeCreateNoticeFromExistingEmail(existingEmail);
         await markGmailMessageAsProcessed(userId, rawMsg.id);
         skipped++;
         continue;
@@ -1101,8 +1381,8 @@ export const syncGmailMessagesForUser = async (
             deadlineCandidatesGenerated++;
           }
 
-          // Institutional notices: Only if authorized reviewer/admin
-          if (isAuthorizedReviewer && candidate.isCampusWide !== false && !isPersonalOrNonNotice(candidate)) {
+          // Safe dual-visibility notice curation model
+          if (candidate.isCampusWide !== false && !isPersonalOrNonNotice(candidate)) {
             const dates = candidate.importantDates || [];
             const eventDate = dates.length > 0 ? dates[0].date : null;
             const fingerprint = generateNoticeFingerprint(
@@ -1116,8 +1396,10 @@ export const syncGmailMessagesForUser = async (
             if (!suppressed) {
               try {
                 const isPersonalAccount = isPersonalAccountEmail(conn.google_email);
+                const isStudentSender = isStudentInstitutionSender(candidate.source?.sender || '');
+                const isInstitutionalBroadcast = isAuthorizedReviewer && !isPersonalAccount && !isStudentSender;
                 const syncSourceType: 'institutional' | 'gmail_personal' =
-                  (!isPersonalAccount && isAuthorizedReviewer) ? 'institutional' : 'gmail_personal';
+                  isInstitutionalBroadcast ? 'institutional' : 'gmail_personal';
 
                 const createdNotice = await noticesService.createFromCandidate(userId, candidate, {
                   connectionId: conn.id,
@@ -1173,6 +1455,19 @@ export const syncGmailMessagesForUser = async (
     }
   }
 
+  let recoveryStats: GmailRecoveryStats | undefined = undefined;
+  if (options?.recoverHistorical) {
+    try {
+      recoveryStats = await recoverHistoricalGmailMessages(userId, {
+        recoveryDays: options.recoveryDays,
+        maxCount: options.maxRecoveryCount,
+      });
+      noticesCreated += recoveryStats.noticesCreated;
+    } catch (recErr) {
+      console.error('Historical recovery error during sync:', recErr);
+    }
+  }
+
     return {
       checked,
       newMessages,
@@ -1187,6 +1482,7 @@ export const syncGmailMessagesForUser = async (
       ignoredMessages,
       deadlineCandidatesGenerated,
       tasksGenerated,
+      ...(recoveryStats ? { recoveredCount: recoveryStats.recoveredCount } : {}),
       ...(interrupted ? { interrupted: true, message: interruptMessage } : {}),
     };
   } finally {

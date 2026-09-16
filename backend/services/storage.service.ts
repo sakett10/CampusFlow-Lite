@@ -235,7 +235,7 @@ export const storageService = {
             organizer: row.source_sender || 'University Administration',
             importantActions: actions,
             sourceText: row.summary,
-            sourceType: 'notice' as const,
+            sourceType: row.source_type === 'gmail_personal' ? ('email' as const) : ('notice' as const),
           };
         })
         .filter((item) => isItemActive(item));

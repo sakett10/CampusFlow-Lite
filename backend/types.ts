@@ -62,6 +62,7 @@ export interface GmailSyncStats {
   ignoredMessages?: number;
   deadlineCandidatesGenerated?: number;
   tasksGenerated?: number;
+  recoveredCount?: number;
   inProgress?: boolean;
   interrupted?: boolean;
   message?: string;

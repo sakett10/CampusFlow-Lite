@@ -519,12 +519,19 @@ This communication is confidential and intended for VIT students only.
       );
       expect(processedRows).toHaveLength(1);
 
-      // For student, analysis completes but institutional notices are not auto-published (student privacy isolation)
+      // For student, analysis completes and creates private notice, but institutional notices are not auto-published (student privacy isolation)
       expect(emailRows[0].analysis_status).toBe('completed');
       const { rows: noticeRows } = await pool.query('SELECT * FROM notices WHERE source_message_id = $1', [
         'msg_academic_urgent_01',
       ]);
-      expect(noticeRows).toHaveLength(0);
+      expect(noticeRows).toHaveLength(1);
+      expect(noticeRows[0].source_type).toBe('gmail_personal');
+      expect(noticeRows[0].created_by_user_id).toBe('student_user');
+      const { rows: instNotices } = await pool.query(
+        "SELECT * FROM notices WHERE source_message_id = $1 AND source_type = 'institutional'",
+        ['msg_academic_urgent_01'],
+      );
+      expect(instNotices).toHaveLength(0);
     });
 
     it('handles uncertain email: stage 1 metadata yields uncertain, stage 2 fetches body and evaluates', async () => {

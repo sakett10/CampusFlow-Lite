@@ -11,6 +11,7 @@ import {
   parseGmailMessageDetails,
   toStructuredGmailMessage,
   syncGmailMessagesForUser,
+  recoverHistoricalGmailMessages,
   disconnectGmailForUser,
   GmailNotConnectedError,
 } from '../services/gmail.service.js';
@@ -426,7 +427,19 @@ router.post('/sync', requireAuth(), gmailSyncLimiter, async (req, res) => {
       : 15;
     const query = typeof req.body?.query === 'string' ? req.body.query : (typeof req.query?.q === 'string' ? (req.query.q as string) : undefined);
     const syncHistorical = Boolean(req.body?.syncHistorical || req.query?.syncHistorical);
-    const stats = await syncGmailMessagesForUser(userId, batchSize, reviewer, { query, syncHistorical });
+    const recoverHistorical = Boolean(req.body?.recoverHistorical || req.query?.recoverHistorical);
+    const rawRecoveryDays = Number(req.body?.recoveryDays || req.query?.recoveryDays);
+    const recoveryDays = Number.isInteger(rawRecoveryDays) ? rawRecoveryDays : undefined;
+    const rawMaxRecoveryCount = Number(req.body?.maxRecoveryCount || req.query?.maxRecoveryCount);
+    const maxRecoveryCount = Number.isInteger(rawMaxRecoveryCount) ? rawMaxRecoveryCount : undefined;
+
+    const stats = await syncGmailMessagesForUser(userId, batchSize, reviewer, {
+      query,
+      syncHistorical,
+      recoverHistorical,
+      recoveryDays,
+      maxRecoveryCount,
+    });
     return res.json(stats);
 
   } catch (error) {
@@ -440,6 +453,42 @@ router.post('/sync', requireAuth(), gmailSyncLimiter, async (req, res) => {
 
     return res.status(500).json({
       error: 'Failed to sync Gmail messages',
+    });
+  }
+});
+
+/**
+ * Recover historical Gmail messages previously marked processed or missing notices
+ * POST /api/gmail/recover
+ */
+router.post('/recover', requireAuth(), gmailSyncLimiter, async (req, res) => {
+  const { userId } = getAuth(req);
+
+  if (!userId) {
+    return res.status(401).json({
+      error: 'Unauthorized',
+    });
+  }
+
+  try {
+    const rawDays = Number(req.body?.recoveryDays || req.query?.recoveryDays);
+    const recoveryDays = Number.isInteger(rawDays) ? rawDays : 14;
+    const rawCount = Number(req.body?.maxCount || req.query?.maxCount);
+    const maxCount = Number.isInteger(rawCount) ? rawCount : 50;
+
+    const stats = await recoverHistoricalGmailMessages(userId, { recoveryDays, maxCount });
+    return res.json(stats);
+  } catch (error) {
+    if (error instanceof GmailNotConnectedError) {
+      return res.status(404).json({
+        error: 'Gmail account is not connected',
+      });
+    }
+
+    console.error('Failed to recover historical Gmail messages:', error);
+
+    return res.status(500).json({
+      error: 'Failed to recover historical Gmail messages',
     });
   }
 });
