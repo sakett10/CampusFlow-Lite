@@ -368,7 +368,9 @@ export async function reclassifyExistingCampusEmails(userId: string): Promise<{
       snippet: email.snippet,
     });
 
-    if (!classification.isAcademic) {
+    if (!classification.isCampusRelevant) {
+      // Only discard high-confidence personal/promotional mail; 'uncertain' emails are kept
+      // so the second-stage analyzer can make the final campus-relevance decision.
       await campusEmailsService.deleteBySourceMessageId(userId, email.sourceMessageId);
       ignoredCount++;
       await markGmailMessageAsProcessed(userId, email.sourceMessageId);
@@ -392,19 +394,25 @@ export async function reclassifyExistingCampusEmails(userId: string): Promise<{
           bodyText: email.bodyText || email.snippet || '',
           snippet: email.snippet || '',
         };
+        let isDefinitiveRejection = false;
         try {
           candidateObj = await noticeAnalyzerService.analyze(structuredMsg);
-        } catch {
-          try {
-            const rawCandidate = extractHeuristicCandidate(structuredMsg);
-            candidateObj = validateNoticeCandidate(rawCandidate, {
-              provider: 'gmail',
-              messageId: email.sourceMessageId,
-              sender: email.senderEmail || '',
-              subject: email.subject || '',
-            });
-          } catch (valErr) {
-            console.warn('Validation error on reclassifying candidate:', valErr);
+        } catch (aiErr) {
+          if (aiErr instanceof NoticeValidationError) {
+            isDefinitiveRejection = true;
+          } else {
+            try {
+              const rawCandidate = extractHeuristicCandidate(structuredMsg);
+              candidateObj = validateNoticeCandidate(rawCandidate, {
+                provider: 'gmail',
+                messageId: email.sourceMessageId,
+                sender: email.senderEmail || '',
+                subject: email.subject || '',
+              });
+            } catch {
+              // Heuristic validation also failed to establish notice structure
+              isDefinitiveRejection = true;
+            }
           }
         }
 
@@ -416,6 +424,16 @@ export async function reclassifyExistingCampusEmails(userId: string): Promise<{
             candidateObj,
           );
           await markGmailMessageAsProcessed(userId, email.sourceMessageId);
+        } else if (classification.outcome === 'uncertain' && isDefinitiveRejection) {
+          // Privacy: Ambiguous email definitively rejected by notice analysis. Purge from campus_emails.
+          await campusEmailsService.deleteBySourceMessageId(userId, email.sourceMessageId);
+          ignoredCount++;
+          await markGmailMessageAsProcessed(userId, email.sourceMessageId);
+          await pool.query(
+            'DELETE FROM assignments WHERE user_id = $1 AND source_id = $2 AND source = $3',
+            [userId, email.sourceMessageId, 'gmail'],
+          );
+          continue;
         } else {
           await campusEmailsService.updateAnalysisFailure(
             userId,
@@ -921,9 +939,12 @@ export const syncGmailMessagesForUser = async (
           });
         }
 
-        // Filter out non-academic / personal / promotional emails
-        const isPersonalOrPromo = !classification.isAcademic || classification.outcome === 'personal';
-        const shouldIgnore = isPersonalOrPromo;
+        // First-stage campus-relevance gate: high-confidence personal / promotional mail
+        // is silently discarded (zero persistence).
+        const shouldIgnore =
+          !classification.isCampusRelevant ||
+          classification.outcome === 'personal' ||
+          classification.outcome === 'promotional';
 
         if (shouldIgnore) {
           // Personal Email Zero-Persistence:
@@ -935,85 +956,145 @@ export const syncGmailMessagesForUser = async (
           continue;
         }
 
-        // Verified academic email!
-        relevantAcademicMessages++;
         const authoritativeDate = parsedDetails.internalDate
           ? new Date(Number(parsedDetails.internalDate)).toISOString()
           : parsedDetails.date && !Number.isNaN(new Date(parsedDetails.date).getTime())
           ? new Date(parsedDetails.date).toISOString()
           : new Date().toISOString();
 
-        await campusEmailsService.persistEmail({
-          userId,
-          sourceAccountEmail: conn.google_email,
-          sourceMessageId: msgId,
-          sourceThreadId: parsedDetails.threadId,
-          senderEmail: parsedDetails.from,
-          senderName: parsedDetails.from,
-          subject: parsedDetails.subject,
-          receivedAt: authoritativeDate,
-          bodyText: parsedDetails.body || parsedDetails.bodyText || parsedDetails.snippet,
-          snippet: parsedDetails.snippet,
-        });
-        emailsPersisted++;
-
-        // Candidate extraction: Try AI analysis first; fall back to deterministic heuristics
         const structuredMessage = toStructuredGmailMessage(parsedDetails);
         let candidate: NoticeCandidate | null = null;
         let analysisSucceeded = false;
 
-        try {
-          candidate = await noticeAnalyzerService.analyze(structuredMessage);
-          analysisSucceeded = true;
-        } catch (aiErr) {
-          if (aiErr instanceof NoticeValidationError) {
-            // Definitively non-notice academic email
-            await campusEmailsService.updateAnalysisFailure(
-              userId,
-              conn.google_email,
-              msgId,
-              'Non-notice email',
-            );
-          } else {
-            console.warn(
-              `AI analysis failed for message ${msgId}, engaging deterministic heuristic fallback:`,
-              aiErr instanceof Error ? aiErr.message : String(aiErr),
-            );
+        if (classification.outcome === 'uncertain') {
+          // Privacy Gate for Ambiguous / Uncertain Emails:
+          // Do NOT persist to campus_emails before second-stage notice analysis establishes relevance.
+          try {
+            candidate = await noticeAnalyzerService.analyze(structuredMessage);
+            analysisSucceeded = true;
+          } catch (aiErr) {
+            if (aiErr instanceof NoticeValidationError) {
+              // Definitive rejection: not a campus notice. Discard with zero persistence.
+              await markGmailMessageAsProcessed(userId, msgId);
+              ignoredMessages++;
+              processed++;
+              continue;
+            } else {
+              // Transient AI error: engage deterministic heuristic fallback
+              try {
+                const rawHeuristic = extractHeuristicCandidate(structuredMessage);
+                candidate = validateNoticeCandidate(rawHeuristic, {
+                  provider: 'gmail',
+                  messageId: msgId,
+                  sender: parsedDetails.from || 'University',
+                  subject: parsedDetails.subject || 'Campus Notice',
+                });
+                analysisSucceeded = true;
+              } catch {
+                // Heuristic fallback also failed to validate notice structure.
+                // Ambiguous non-campus mail is discarded with zero persistence.
+                await markGmailMessageAsProcessed(userId, msgId);
+                ignoredMessages++;
+                processed++;
+                continue;
+              }
+            }
+          }
 
-            // Deterministic heuristic fallback using existing extractor & validator
-            try {
-              const rawHeuristic = extractHeuristicCandidate(structuredMessage);
-              candidate = validateNoticeCandidate(rawHeuristic, {
-                provider: 'gmail',
-                messageId: msgId,
-                sender: parsedDetails.from || 'University',
-                subject: parsedDetails.subject || 'Campus Notice',
-              });
-              analysisSucceeded = true;
-            } catch (heuristicErr) {
-              console.error(
-                `Heuristic fallback also failed for message ${msgId}:`,
-                heuristicErr instanceof Error ? heuristicErr.message : String(heuristicErr),
-              );
+          // If second-stage analyzer classified the candidate as personal, discard with zero persistence
+          if (!candidate || candidate.isPersonal === true) {
+            await markGmailMessageAsProcessed(userId, msgId);
+            ignoredMessages++;
+            processed++;
+            continue;
+          }
+
+          // Relevance is established! Persist to campus_emails now.
+          relevantAcademicMessages++;
+          await campusEmailsService.persistEmail({
+            userId,
+            sourceAccountEmail: conn.google_email,
+            sourceMessageId: msgId,
+            sourceThreadId: parsedDetails.threadId,
+            senderEmail: parsedDetails.from,
+            senderName: parsedDetails.from,
+            subject: parsedDetails.subject,
+            receivedAt: authoritativeDate,
+            bodyText: parsedDetails.body || parsedDetails.bodyText || parsedDetails.snippet,
+            snippet: parsedDetails.snippet,
+          });
+          emailsPersisted++;
+
+          await campusEmailsService.updateAnalysisSuccess(userId, conn.google_email, msgId, candidate);
+        } else {
+          // Confident campus email ('campus'): relevance already established at classification gate.
+          relevantAcademicMessages++;
+          await campusEmailsService.persistEmail({
+            userId,
+            sourceAccountEmail: conn.google_email,
+            sourceMessageId: msgId,
+            sourceThreadId: parsedDetails.threadId,
+            senderEmail: parsedDetails.from,
+            senderName: parsedDetails.from,
+            subject: parsedDetails.subject,
+            receivedAt: authoritativeDate,
+            bodyText: parsedDetails.body || parsedDetails.bodyText || parsedDetails.snippet,
+            snippet: parsedDetails.snippet,
+          });
+          emailsPersisted++;
+
+          try {
+            candidate = await noticeAnalyzerService.analyze(structuredMessage);
+            analysisSucceeded = true;
+          } catch (aiErr) {
+            if (aiErr instanceof NoticeValidationError) {
+              // Definitively non-notice academic email
               await campusEmailsService.updateAnalysisFailure(
                 userId,
                 conn.google_email,
                 msgId,
-                aiErr instanceof Error ? aiErr.message : 'Analysis failed',
+                'Non-notice email',
               );
-              analysesFailed++;
-              failed++;
-              // Double failure: Keep raw email stored in campus_emails with analysis_status = 'failed'.
-              // Do NOT mark as processed in processed_gmail_messages, so it remains recoverable.
-              // Repeated AI hammering is prevented by the 30-minute cooldown on failed campus_emails.
-              continue;
+            } else {
+              console.warn(
+                `AI analysis failed for message ${msgId}, engaging deterministic heuristic fallback:`,
+                aiErr instanceof Error ? aiErr.message : String(aiErr),
+              );
+
+              // Deterministic heuristic fallback using existing extractor & validator
+              try {
+                const rawHeuristic = extractHeuristicCandidate(structuredMessage);
+                candidate = validateNoticeCandidate(rawHeuristic, {
+                  provider: 'gmail',
+                  messageId: msgId,
+                  sender: parsedDetails.from || 'University',
+                  subject: parsedDetails.subject || 'Campus Notice',
+                });
+                analysisSucceeded = true;
+              } catch (heuristicErr) {
+                console.error(
+                  `Heuristic fallback also failed for message ${msgId}:`,
+                  heuristicErr instanceof Error ? heuristicErr.message : String(heuristicErr),
+                );
+                await campusEmailsService.updateAnalysisFailure(
+                  userId,
+                  conn.google_email,
+                  msgId,
+                  aiErr instanceof Error ? aiErr.message : 'Analysis failed',
+                );
+                analysesFailed++;
+                failed++;
+                continue;
+              }
             }
+          }
+
+          if (analysisSucceeded && candidate) {
+            await campusEmailsService.updateAnalysisSuccess(userId, conn.google_email, msgId, candidate);
           }
         }
 
         if (analysisSucceeded && candidate) {
-          await campusEmailsService.updateAnalysisSuccess(userId, conn.google_email, msgId, candidate);
-
           // Track student deadline candidate (tasks are NOT auto-created on sync)
           const taskInfo = extractDeadlineAndTask(candidate, parsedDetails);
           if (taskInfo.hasDeadline || candidate.actionRequired || taskInfo.dueDate) {

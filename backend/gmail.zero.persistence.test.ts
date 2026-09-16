@@ -90,6 +90,7 @@ import {
   normalizeWhitespace,
 } from './services/emailSanitizer.service.js';
 import { getNoticeAnalyzer, resetNoticeAnalyzer } from './services/noticeAnalyzer.service.js';
+import { NoticeValidationError } from './services/noticeValidator.js';
 import { campusEmailsService } from './services/campusEmails.service.js';
 import { reclassifyExistingCampusEmails } from './services/gmail.service.js';
 
@@ -209,20 +210,22 @@ This communication is confidential and intended for VIT students only.
         snippet: 'The Final Assessment Test schedule is published on VTOP.',
       });
 
-      expect(result.outcome).toBe('academic');
+      expect(result.outcome).toBe('campus');
       expect(result.isAcademic).toBe(true);
+      expect(result.isCampusRelevant).toBe(true);
       expect(result.isPersonal).toBe(false);
     });
 
-    it('Stage 1 classifies personal promotional email as personal from metadata alone', () => {
+    it('Stage 1 classifies personal promotional email as promotional from metadata alone', () => {
       const result = classifyEmail({
         from: 'Swiggy <no-reply@swiggy.in>',
         subject: '50% off on your favorite biryani tonight!',
         snippet: 'Hungry? Order now and get free delivery on orders above Rs. 199.',
       });
 
-      expect(result.outcome).toBe('personal');
+      expect(result.outcome).toBe('promotional');
       expect(result.isAcademic).toBe(false);
+      expect(result.isCampusRelevant).toBe(false);
       expect(result.isPromotionalOrNewsletter).toBe(true);
     });
 
@@ -253,7 +256,7 @@ This communication is confidential and intended for VIT students only.
         bodyText: 'Regarding the points we spoke about: the assignment deadline for CSE2001 is extended to next Monday. Submit the lab report on VTOP.',
       });
 
-      expect(stage2.outcome).toBe('academic');
+      expect(stage2.outcome).toBe('campus');
       expect(stage2.isAcademic).toBe(true);
     });
 
@@ -276,8 +279,9 @@ This communication is confidential and intended for VIT students only.
         subject: 'Important Circular No. 45/2026',
         snippet: 'Please find the circular details attached.',
       });
-      expect(result.outcome).toBe('academic');
+      expect(result.outcome).toBe('campus');
       expect(result.isAcademic).toBe(true);
+      expect(result.isCampusRelevant).toBe(true);
       expect(result.isPersonal).toBe(false);
     });
 
@@ -287,7 +291,7 @@ This communication is confidential and intended for VIT students only.
         subject: 'Midterm Examination Schedule Announcement',
         snippet: 'The midterm timetable is now available.',
       });
-      expect(result.outcome).toBe('academic');
+      expect(result.outcome).toBe('campus');
       expect(result.isAcademic).toBe(true);
     });
 
@@ -297,7 +301,7 @@ This communication is confidential and intended for VIT students only.
         subject: 'FAT Timetable Updates',
         snippet: 'Please check your exam slots on the portal.',
       });
-      expect(result.outcome).toBe('academic');
+      expect(result.outcome).toBe('campus');
       expect(result.isAcademic).toBe(true);
     });
 
@@ -318,8 +322,9 @@ This communication is confidential and intended for VIT students only.
         subject: 'Winter Internship submission deadline: flat 50% cash stipend',
         snippet: 'Apply before the deadline to earn stipend while attending college classes.',
       });
-      expect(result.outcome).toBe('personal');
+      expect(result.outcome).toBe('promotional');
       expect(result.isAcademic).toBe(false);
+      expect(result.isCampusRelevant).toBe(false);
       expect(result.isPromotionalOrNewsletter).toBe(true);
     });
   });
@@ -580,6 +585,107 @@ This communication is confidential and intended for VIT students only.
         ['msg_uncertain_01'],
       );
       expect(emailRows).toHaveLength(1);
+    });
+
+    it('enforces zero-persistence for missing sender header when second-stage rejects it', async () => {
+      await pool.query(
+        `INSERT INTO gmail_connections (id, user_id, google_email, access_token, refresh_token, expiry_date)
+         VALUES ($1, 'student_user', 'student@vitstudent.ac.in', 'token_1', 'refresh_1', 1700000000)`,
+        [randomUUID()],
+      );
+
+      mockList.mockResolvedValueOnce({
+        data: { messages: [{ id: 'msg_no_sender_99' }] },
+      });
+
+      mockGet.mockResolvedValueOnce({
+        data: {
+          id: 'msg_no_sender_99',
+          snippet: 'Random newsletter content without sender header',
+          payload: {
+            headers: [
+              { name: 'Subject', value: 'Newsletter Update' },
+            ],
+          },
+        },
+      });
+
+      const analyzer = getNoticeAnalyzer();
+      vi.spyOn(analyzer, 'analyze').mockRejectedValueOnce(
+        new NoticeValidationError('Definitively not a notice', ['category']),
+      );
+
+      const res = await request(app).post('/api/gmail/sync').set('Authorization', 'Bearer student_user');
+
+      expect(res.status).toBe(200);
+      expect(res.body.ignoredMessages).toBe(1);
+      expect(res.body.relevantAcademicMessages).toBe(0);
+
+      // ZERO PERSISTENCE: 0 rows in campus_emails
+      const { rows: emailRows } = await pool.query(
+        'SELECT * FROM campus_emails WHERE source_message_id = $1',
+        ['msg_no_sender_99'],
+      );
+      expect(emailRows).toHaveLength(0);
+
+      // Deduplication record exists
+      const { rows: processedRows } = await pool.query(
+        'SELECT * FROM processed_gmail_messages WHERE gmail_message_id = $1',
+        ['msg_no_sender_99'],
+      );
+      expect(processedRows).toHaveLength(1);
+    });
+
+    it('enforces zero-persistence for unknown sender with generic campus vocabulary when rejected by second stage', async () => {
+      await pool.query(
+        `INSERT INTO gmail_connections (id, user_id, google_email, access_token, refresh_token, expiry_date)
+         VALUES ($1, 'student_user', 'student@vitstudent.ac.in', 'token_1', 'refresh_1', 1700000000)`,
+        [randomUUID()],
+      );
+
+      mockList.mockResolvedValueOnce({
+        data: { messages: [{ id: 'msg_unknown_vocab_01' }] },
+      });
+
+      mockGet.mockResolvedValueOnce({
+        data: {
+          id: 'msg_unknown_vocab_01',
+          snippet: 'Free online workshop on coding. Enroll now for exam preparation.',
+          payload: {
+            headers: [
+              { name: 'From', value: 'Promo Academy <offers@promo-training-courses.net>' },
+              { name: 'Subject', value: 'Workshop & exam preparation offer' },
+            ],
+            body: {
+              data: Buffer.from('Enroll in our workshop and exam prep courses today!').toString('base64url'),
+            },
+          },
+        },
+      });
+
+      const analyzer = getNoticeAnalyzer();
+      vi.spyOn(analyzer, 'analyze').mockRejectedValueOnce(
+        new NoticeValidationError('Promotional workshop, not a university campus notice', ['category']),
+      );
+
+      const res = await request(app).post('/api/gmail/sync').set('Authorization', 'Bearer student_user');
+
+      expect(res.status).toBe(200);
+      expect(res.body.ignoredMessages).toBe(1);
+      expect(res.body.relevantAcademicMessages).toBe(0);
+
+      // PRIVACY: Not persisted to campus_emails because relevance was never established!
+      const { rows: emailRows } = await pool.query(
+        'SELECT * FROM campus_emails WHERE source_message_id = $1',
+        ['msg_unknown_vocab_01'],
+      );
+      expect(emailRows).toHaveLength(0);
+
+      const { rows: processedRows } = await pool.query(
+        'SELECT * FROM processed_gmail_messages WHERE gmail_message_id = $1',
+        ['msg_unknown_vocab_01'],
+      );
+      expect(processedRows).toHaveLength(1);
     });
   });
 

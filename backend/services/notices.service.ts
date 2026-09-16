@@ -21,6 +21,7 @@ import { notificationsService } from './notifications.service.js';
 import { mapRowToAssignment, assignmentsService } from './assignments.service.js';
 import { parseNaturalDate } from './deadlineParser.service.js';
 import { isReviewerUserId } from '../middleware/requireAuth.js';
+import { isStudentInstitutionSender, isGenericMailboxDomain } from '../config/institutions.js';
 
 export const SYSTEM_INSTITUTIONAL_USER_ID = 'admin';
 
@@ -201,17 +202,9 @@ const mapRowToNotice = (row: Record<string, unknown>, userId?: string): Notice =
 export function isPersonalAccountEmail(email?: string | null): boolean {
   if (!email) return false;
   const lower = email.toLowerCase().trim();
+  if (isGenericMailboxDomain(lower)) return true;
   if (lower.includes('student.')) return true;
-  if (
-    lower.endsWith('@gmail.com') ||
-    lower.endsWith('@googlemail.com') ||
-    lower.endsWith('@yahoo.com') ||
-    lower.endsWith('@outlook.com') ||
-    lower.endsWith('@hotmail.com') ||
-    lower.endsWith('@icloud.com')
-  ) {
-    return true;
-  }
+  if (isStudentInstitutionSender(lower)) return true;
   return false;
 }
 
