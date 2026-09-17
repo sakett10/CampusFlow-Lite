@@ -60,9 +60,14 @@ export function configureVapid(): boolean {
     return true;
   } catch (err) {
     if (process.env.NODE_ENV === 'production') {
-      throw new Error(`Failed to configure VAPID details: ${err instanceof Error ? err.message : String(err)}`, {
-        cause: err,
-      });
+      // Thrown without the ES2022 ErrorOptions constructor overload so this also typechecks under
+      // lib targets that predate it (avoids error TS2554 on Vercel's TS environment). The cause is
+      // attached via a typed intersection instead of relying on the ES2022 Error.cause declaration.
+      const configError: Error & { cause?: unknown } = new Error(
+        `Failed to configure VAPID details: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      configError.cause = err;
+      throw configError;
     }
     return false;
   }
