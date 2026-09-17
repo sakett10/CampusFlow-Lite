@@ -19,8 +19,14 @@ import {
   Building2,
   Mail,
   ArrowRight,
+  Image as ImageIcon,
+  Loader2,
+  Eye,
 } from 'lucide-react';
-import type { Notice, NoticeCategory, NoticePriority, NoticeStatus } from '../lib/types';
+import { useAuth } from '@clerk/clerk-react';
+import type { Notice, NoticeCategory, NoticePriority, NoticeStatus, NoticeAttachment } from '../lib/types';
+import { ImagePreviewModal } from './ImagePreviewModal';
+import { formatFileSize } from '../lib/attachmentUtils';
 import {
   formatNoticeDate,
   formatEmailTimestamp,
@@ -121,6 +127,76 @@ export const NoticeCard: React.FC<NoticeCardProps> = ({
 }) => {
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [showExtendedProvenance, setShowExtendedProvenance] = useState(false);
+
+  const { getToken } = useAuth();
+  const [previewImage, setPreviewImage] = useState<{ url: string; filename: string; sizeBytes?: number } | null>(null);
+  const [loadingAttachmentId, setLoadingAttachmentId] = useState<string | null>(null);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+
+  const handleOpenPdf = async (att: NoticeAttachment) => {
+    setAttachmentError(null);
+    setLoadingAttachmentId(att.id);
+
+    // Synchronously open a blank window within user gesture context to prevent popup blockers
+    const popupWindow = window.open('about:blank', '_blank');
+
+    try {
+      const token = await getToken();
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`/api/notices/${notice.id}/attachments/${att.id}`, { headers });
+      if (!res.ok) {
+        if (popupWindow) popupWindow.close();
+        setAttachmentError('Unable to open attachment. Please try again.');
+        return;
+      }
+
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      if (popupWindow) {
+        popupWindow.location.href = blobUrl;
+      } else {
+        window.open(blobUrl, '_blank');
+      }
+    } catch {
+      if (popupWindow) popupWindow.close();
+      setAttachmentError('Failed to load attachment. Please check your connection.');
+    } finally {
+      setLoadingAttachmentId(null);
+    }
+  };
+
+  const handlePreviewImage = async (att: NoticeAttachment) => {
+    setAttachmentError(null);
+    setLoadingAttachmentId(att.id);
+    try {
+      const token = await getToken();
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`/api/notices/${notice.id}/attachments/${att.id}`, { headers });
+      if (!res.ok) {
+        setAttachmentError('Unable to preview image. Please try again.');
+        return;
+      }
+
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      setPreviewImage({ url: blobUrl, filename: att.filename, sizeBytes: att.sizeBytes });
+    } catch {
+      setAttachmentError('Failed to load image preview. Please check your connection.');
+    } finally {
+      setLoadingAttachmentId(null);
+    }
+  };
+
+  const handleClosePreview = () => {
+    if (previewImage?.url) {
+      URL.revokeObjectURL(previewImage.url);
+    }
+    setPreviewImage(null);
+  };
 
   const catStyle = CATEGORY_CONFIG[notice.category] || CATEGORY_CONFIG.general;
   const priStyle = PRIORITY_CONFIG[notice.priority] || PRIORITY_CONFIG.normal;
@@ -339,6 +415,79 @@ export const NoticeCard: React.FC<NoticeCardProps> = ({
         </div>
       )}
 
+      {/* 4.5 Attachments Section */}
+      {notice.attachments && notice.attachments.length > 0 && (
+        <div className="space-y-2 pt-2 border-t border-slate-200/60" data-testid="notice-attachments-section">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 uppercase tracking-wider">
+            <span>Attachments ({notice.attachments.length})</span>
+          </div>
+
+          {attachmentError && (
+            <div className="text-xs text-rose-600 bg-rose-50 border border-rose-200 px-2.5 py-1.5 rounded-lg">
+              {attachmentError}
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2">
+            {notice.attachments.map((att) => {
+              const isPdf = att.attachmentType === 'pdf' || att.mimeType === 'application/pdf';
+              const isLoadingThis = loadingAttachmentId === att.id;
+
+              return (
+                <div
+                  key={att.id}
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50/90 border border-slate-200 text-slate-800 text-xs font-medium hover:border-slate-300 transition-colors shadow-sm"
+                >
+                  <div className="flex items-center gap-1.5 truncate max-w-[180px] sm:max-w-[220px]">
+                    {isPdf ? (
+                      <FileText className="w-4 h-4 text-rose-500 shrink-0" aria-hidden="true" />
+                    ) : (
+                      <ImageIcon className="w-4 h-4 text-blue-500 shrink-0" aria-hidden="true" />
+                    )}
+                    <span className="truncate font-semibold text-slate-800" title={att.filename}>
+                      {att.filename}
+                    </span>
+                    <span className="text-slate-400 text-[11px] shrink-0 font-mono">
+                      ({formatFileSize(att.sizeBytes)})
+                    </span>
+                  </div>
+
+                  {isPdf ? (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenPdf(att)}
+                      disabled={isLoadingThis}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 hover:text-slate-900 hover:bg-slate-100 font-semibold text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-slate-400 disabled:opacity-50 cursor-pointer"
+                    >
+                      {isLoadingThis ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+                      ) : (
+                        <ExternalLink className="w-3.5 h-3.5 text-slate-500" aria-hidden="true" />
+                      )}
+                      <span>Open PDF</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handlePreviewImage(att)}
+                      disabled={isLoadingThis}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 font-semibold text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-50 cursor-pointer"
+                    >
+                      {isLoadingThis ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+                      ) : (
+                        <Eye className="w-3.5 h-3.5 text-blue-600" aria-hidden="true" />
+                      )}
+                      <span>Preview</span>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* 5. Provenance & Telemetry Metadata */}
       <div className="mt-auto pt-3 border-t border-slate-200/80 flex flex-col gap-1.5 text-xs font-mono text-slate-500">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -548,6 +697,14 @@ export const NoticeCard: React.FC<NoticeCardProps> = ({
           </div>
         </div>
       )}
+
+      <ImagePreviewModal
+        isOpen={Boolean(previewImage)}
+        onClose={handleClosePreview}
+        imageUrl={previewImage?.url || null}
+        filename={previewImage?.filename || ''}
+        sizeBytes={previewImage?.sizeBytes}
+      />
     </article>
   );
 };

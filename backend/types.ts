@@ -18,6 +18,9 @@ export type Assignment = {
   status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
   dueTime?: string | null;
   reminder?: string | null;
+  reminderRemindAt?: string | null;
+  reminderTimezone?: string | null;
+  reminderStatus?: 'pending' | 'processing' | 'sent' | 'failed' | 'cancelled' | null;
   priority?: 'low' | 'medium' | 'high' | 'urgent';
   source?: string;
   sourceId?: string | null;
@@ -130,8 +133,32 @@ export interface NoticeCandidate {
 }
 
 
-export type NoticeStatus = 'pending' | 'approved' | 'published' | 'rejected' | 'archived';
+export type SupportedAttachmentMimeType =
+  | 'application/pdf'
+  | 'image/jpeg'
+  | 'image/png'
+  | 'image/webp';
 
+export type AttachmentType = 'pdf' | 'image';
+
+export interface NoticeAttachmentMetadata {
+  id: string;
+  noticeId: string;
+  filename: string;
+  mimeType: SupportedAttachmentMimeType;
+  sizeBytes: number;
+  attachmentType: AttachmentType;
+  createdAt: string;
+}
+
+export interface NoticeAttachmentRecord extends NoticeAttachmentMetadata {
+  userId: string;
+  storageKey: string;
+  gmailMessageId?: string | null;
+  gmailAttachmentId?: string | null;
+}
+
+export type NoticeStatus = 'pending' | 'approved' | 'published' | 'rejected' | 'archived';
 
 export interface Notice {
   id: string;
@@ -146,6 +173,7 @@ export interface Notice {
   venue?: string | null;
   links?: Array<{ label: string; url: string }>;
   documents?: Array<{ label: string; url: string }>;
+  attachments?: NoticeAttachmentMetadata[];
   sourceProvider: string;
   sourceConnectionId?: string | null;
   sourceAccountEmail?: string | null;

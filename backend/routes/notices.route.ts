@@ -16,6 +16,7 @@ import {
 import { NoticeValidationError } from '../services/noticeValidator.js';
 import { GmailNotConnectedError } from '../services/gmail.service.js';
 import { CourseNotFoundError } from '../services/assignments.service.js';
+import { attachmentsService } from '../services/attachments.service.js';
 import type { NoticeCategory, NoticePriority, NoticeStatus } from '../types.js';
 import { noticeConvertLimiter } from '../middleware/rateLimiter.js';
 
@@ -95,6 +96,86 @@ router.get('/:id', requireAuth(), async (req, res) => {
   } catch (error) {
     console.error('Failed to get notice:', error);
     return res.status(500).json({ error: 'Failed to get notice' });
+  }
+});
+
+/**
+ * List attachments for a notice
+ * GET /api/notices/:noticeId/attachments
+ */
+router.get('/:noticeId/attachments', requireAuth(), async (req, res) => {
+  const auth = getAuth(req);
+  if (!auth?.userId) {
+    return res.status(401).json({ error: 'Unauthenticated' });
+  }
+
+  const { noticeId } = req.params;
+  if (!noticeId || typeof noticeId !== 'string') {
+    return res.status(400).json({ error: 'Invalid notice ID' });
+  }
+
+  try {
+    const reviewer = isReviewer(req);
+    const notice = await noticesService.getById(noticeId, reviewer, auth.userId);
+    if (!notice) {
+      return res.status(404).json({ error: 'Notice not found' });
+    }
+
+    const attachments = await attachmentsService.getAttachmentsForNotice(noticeId);
+    return res.json(attachments);
+  } catch (error) {
+    console.error('Failed to get notice attachments:', error);
+    return res.status(500).json({ error: 'Failed to load attachments' });
+  }
+});
+
+/**
+ * Get and stream an authenticated attachment binary
+ * GET /api/notices/:noticeId/attachments/:attachmentId
+ */
+router.get('/:noticeId/attachments/:attachmentId', requireAuth(), async (req, res) => {
+  const auth = getAuth(req);
+  if (!auth?.userId) {
+    return res.status(401).json({ error: 'Unauthenticated' });
+  }
+
+  const { noticeId, attachmentId } = req.params;
+  if (!noticeId || typeof noticeId !== 'string' || !attachmentId || typeof attachmentId !== 'string') {
+    return res.status(400).json({ error: 'Invalid notice or attachment ID' });
+  }
+
+  try {
+    const reviewer = isReviewer(req);
+    const notice = await noticesService.getById(noticeId, reviewer, auth.userId);
+    if (!notice) {
+      return res.status(404).json({ error: 'Notice not found' });
+    }
+
+    const record = await attachmentsService.getAttachmentById(attachmentId, noticeId);
+    if (!record) {
+      return res.status(404).json({ error: 'Attachment not found' });
+    }
+
+    // Tenant isolation: if personal notice, ensure the authenticated user owns it
+    if (notice.sourceType === 'gmail_personal' && notice.createdByUserId !== auth.userId) {
+      return res.status(404).json({ error: 'Attachment not found' });
+    }
+
+    const file = await attachmentsService.getAttachmentBinary(record.storageKey);
+    if (!file) {
+      return res.status(404).json({ error: 'Attachment file not found' });
+    }
+
+    res.setHeader('Content-Type', record.mimeType);
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(record.filename)}"`);
+    res.setHeader('Content-Length', String(file.data.length));
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, no-cache');
+
+    return res.status(200).send(file.data);
+  } catch (error) {
+    console.error('Failed to retrieve attachment file:', error);
+    return res.status(500).json({ error: 'Failed to retrieve attachment' });
   }
 });
 

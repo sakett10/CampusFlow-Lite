@@ -303,6 +303,7 @@ export default function Assignments() {
                   onEdit={handleEditClick}
                   onDelete={handleDeleteClick}
                   onToggleComplete={toggleTask}
+                  onRemoveReminder={(id) => void updateTask(id, { reminder: null })}
                 />
               </motion.div>
             ))}

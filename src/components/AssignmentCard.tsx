@@ -1,6 +1,7 @@
-import { Edit2, Trash2, Calendar, Clock, Check, Bell, Bookmark, Mail, AlertTriangle } from 'lucide-react';
+import { Edit2, Trash2, Calendar, Clock, Check, Bell, BellOff, X, Bookmark, Mail, AlertTriangle } from 'lucide-react';
 import type { Assignment, Course } from '../lib/types';
 import { formatDueDate, daysUntil, formatTime } from '../lib/dateUtils';
+import { formatTaskReminderBadge } from '../lib/reminderUtils';
 import { Card } from './ui/Card';
 
 type AssignmentCardProps = {
@@ -10,6 +11,7 @@ type AssignmentCardProps = {
   onDelete: (id: string) => void;
   onStatusChange?: (id: string, newStatus: Assignment['status']) => void;
   onToggleComplete?: (id: string) => void;
+  onRemoveReminder?: (id: string) => void;
 };
 
 const PRIORITY_CONFIG = {
@@ -26,6 +28,7 @@ export default function AssignmentCard({
   onDelete,
   onStatusChange,
   onToggleComplete,
+  onRemoveReminder,
 }: AssignmentCardProps) {
   const isCompleted = assignment.status === 'COMPLETED';
   const hasDueDate = Boolean(assignment.dueDate && assignment.dueDate.trim() !== '');
@@ -159,14 +162,40 @@ export default function AssignmentCard({
           )}
 
           {/* Reminder indicator */}
-          {assignment.reminder && assignment.reminder !== 'none' && (
-            <span
-              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[var(--cf-text-tertiary)] bg-slate-50 border border-slate-200"
-              title={`Reminder: ${assignment.reminder}`}
-            >
-              <Bell className="w-2.5 h-2.5 text-slate-600" />
-            </span>
-          )}
+          {(() => {
+            const badge = formatTaskReminderBadge(assignment);
+            if (badge) {
+              return (
+                <span
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-indigo-700 bg-indigo-50 border border-indigo-200"
+                  title={assignment.reminderStatus ? `Reminder Status: ${assignment.reminderStatus}` : undefined}
+                >
+                  <Bell className="w-2.5 h-2.5 text-indigo-600" />
+                  <span>Reminder: {badge.text}</span>
+                  {onRemoveReminder && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRemoveReminder(assignment.id);
+                      }}
+                      className="ml-0.5 text-indigo-400 hover:text-indigo-800 p-0.5 rounded cursor-pointer"
+                      title="Remove reminder"
+                      aria-label="Remove reminder"
+                    >
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  )}
+                </span>
+              );
+            }
+            return (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-slate-400 bg-slate-50 border border-slate-200/60">
+                <BellOff className="w-2.5 h-2.5 text-slate-400" />
+                <span>No reminder</span>
+              </span>
+            );
+          })()}
         </div>
 
         {/* Task Title */}

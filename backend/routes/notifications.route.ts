@@ -2,8 +2,12 @@ import { Router } from 'express';
 import { getAuth } from '@clerk/express';
 import { isReviewer, requireAuth } from '../middleware/requireAuth.js';
 import { notificationsService } from '../services/notifications.service.js';
+import pushRouter from './push.route.js';
 
 const router = Router();
+
+// Web Push endpoints: /api/notifications/push/*
+router.use('/push', pushRouter);
 
 /**
  * Get in-app notifications for authenticated user

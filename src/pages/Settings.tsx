@@ -1,14 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth, useUser, useClerk } from '@clerk/clerk-react';
 import { Link } from 'react-router-dom';
-import { Mail, Shield, X, User, Bell, BellRing, Laptop, AlertTriangle, RefreshCw, LogOut, CheckCircle } from 'lucide-react';
+import { Mail, Shield, X, User, Bell, BellRing, Laptop, AlertTriangle, RefreshCw, LogOut, CheckCircle, Globe, Send } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import {
-  getBrowserNotificationPermission,
-  requestBrowserNotificationPermission,
-} from '../lib/browserNotifications';
+  getPushSubscriptionState,
+  subscribeToPush,
+  unsubscribeFromPush,
+  sendTestWebPush,
+  getClientTimezone,
+  type PushNotificationState,
+} from '../lib/pushNotifications';
+import { DEFAULT_REMINDER_OPTIONS } from '../lib/reminderUtils';
 import { gmailApi } from '../api/gmailApi';
 
 type SettingsTab = 'account' | 'integrations' | 'notifications';
@@ -79,9 +84,13 @@ export default function Settings() {
     return null;
   });
 
-  const [browserPermission, setBrowserPermission] = useState<NotificationPermission | 'unsupported'>(
-    getBrowserNotificationPermission(),
-  );
+  const [pushState, setPushState] = useState<PushNotificationState>('permission_default');
+  const [isSubscribing, setIsSubscribing] = useState(false);
+  const [isTestingPush, setIsTestingPush] = useState(false);
+  const [testPushFeedback, setTestPushFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [defaultReminderOffset, setDefaultReminderOffset] = useState<string>('30m_before');
+  const [userTimezone, setUserTimezone] = useState<string>(getClientTimezone());
+  const [isSavingPrefs, setIsSavingPrefs] = useState(false);
 
   const { getToken } = useAuth();
   const { user } = useUser();
@@ -91,6 +100,135 @@ export default function Settings() {
     typeof window !== 'undefined' &&
     (new URLSearchParams(window.location.search).get('demo') === '1' ||
       window.sessionStorage?.getItem('cf_demo') === '1');
+
+  // Load Push Notification state and User Reminder Preferences
+  const checkPushAndPrefs = useCallback(async () => {
+    const { state } = await getPushSubscriptionState();
+    setPushState(state);
+
+    try {
+      const token = await getToken();
+      if (token) {
+        const res = await fetch('/api/reminders/preferences', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.defaultReminderOffset) {
+            setDefaultReminderOffset(data.defaultReminderOffset);
+          }
+          if (data.timezone && data.timezone !== 'UTC') {
+            setUserTimezone(data.timezone);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load user reminder preferences:', e);
+    }
+  }, [getToken]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void checkPushAndPrefs();
+  }, [checkPushAndPrefs]);
+
+  const handleTogglePushNotifications = async () => {
+    setIsSubscribing(true);
+    setTestPushFeedback(null);
+    try {
+      if (pushState === 'push_active') {
+        const res = await unsubscribeFromPush(getToken);
+        if (res.success) {
+          setPushState('push_inactive');
+          setFeedbackMessage({
+            type: 'success',
+            text: 'Desktop notifications disabled.',
+          });
+        } else {
+          setFeedbackMessage({
+            type: 'error',
+            text: res.error || 'Failed to disable desktop notifications.',
+          });
+        }
+      } else {
+        const res = await subscribeToPush(getToken);
+        if (res.success) {
+          setPushState('push_active');
+          setFeedbackMessage({
+            type: 'success',
+            text: 'Desktop notifications enabled! CampusFlow will deliver task reminders via Web Push.',
+          });
+        } else {
+          const updated = await getPushSubscriptionState();
+          setPushState(updated.state);
+          setFeedbackMessage({
+            type: 'error',
+            text: res.error || 'Failed to enable desktop notifications.',
+          });
+        }
+      }
+    } catch (err) {
+      setFeedbackMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Error managing desktop notifications',
+      });
+    } finally {
+      setIsSubscribing(false);
+    }
+  };
+
+  const handleSendTestPush = async () => {
+    setIsTestingPush(true);
+    setTestPushFeedback(null);
+    try {
+      const res = await sendTestWebPush(getToken);
+      setTestPushFeedback({
+        type: res.success ? 'success' : 'error',
+        text: res.message,
+      });
+    } catch (err) {
+      setTestPushFeedback({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to send test push notification.',
+      });
+    } finally {
+      setIsTestingPush(false);
+    }
+  };
+
+  const handleDefaultReminderChange = async (newVal: string) => {
+    const prevVal = defaultReminderOffset;
+    setDefaultReminderOffset(newVal);
+    setIsSavingPrefs(true);
+    try {
+      const token = await getToken();
+      if (token) {
+        const res = await fetch('/api/reminders/preferences', {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            defaultReminderOffset: newVal,
+            timezone: userTimezone,
+          }),
+        });
+        if (!res.ok) {
+          throw new Error(`Server returned ${res.status} saving preferences`);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to update default reminder preference:', err);
+      setDefaultReminderOffset(prevVal);
+      setFeedbackMessage({
+        type: 'error',
+        text: 'Failed to update default reminder preference.',
+      });
+    } finally {
+      setIsSavingPrefs(false);
+    }
+  };
 
   // Load Gmail connection status
   const checkGmailConnection = useCallback(async () => {
@@ -519,40 +657,153 @@ export default function Settings() {
           </div>
 
           <div className="space-y-4">
-            {/* Desktop Notifications */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-[var(--cf-surface-muted)] border border-[var(--cf-border-subtle)]">
+            {/* Desktop Web Push Notifications */}
+            <div className="flex flex-col gap-4 p-5 rounded-xl bg-[var(--cf-surface-muted)] border border-[var(--cf-border-subtle)]">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-lg bg-white border border-slate-200 text-slate-700">
+                    <Laptop className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-[var(--cf-text)]">Desktop Web Push Notifications</h3>
+                    <p className="text-sm text-[var(--cf-text-secondary)] mt-0.5 max-w-xl">
+                      Deliver task reminders via standards-based Web Push and your browser&apos;s service worker, even when CampusFlow is closed.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {pushState === 'unsupported' ? (
+                    <span className="text-xs text-slate-400 font-mono">Not supported on this browser</span>
+                  ) : pushState === 'permission_denied' ? (
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-rose-700 bg-rose-50 px-2.5 py-1 rounded border border-rose-200">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      Permission Denied
+                    </span>
+                  ) : pushState === 'push_active' ? (
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200">
+                        <CheckCircle className="w-3.5 h-3.5" />
+                        Push Active
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleTogglePushNotifications}
+                        disabled={isSubscribing}
+                      >
+                        {isSubscribing ? 'Disabling...' : 'Disable'}
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      onClick={handleTogglePushNotifications}
+                      disabled={isSubscribing}
+                    >
+                      <BellRing className="w-3.5 h-3.5 mr-1.5" />
+                      {isSubscribing ? 'Enabling...' : 'Enable Notifications'}
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {pushState === 'permission_denied' && (
+                <div className="text-xs text-rose-700 bg-rose-50/70 p-2.5 rounded-lg border border-rose-200">
+                  Notification permission is blocked by your browser settings. To enable, click the site lock icon in your browser address bar and set Notifications to &quot;Allow&quot;.
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[var(--cf-border-subtle)]">
+                <div className="text-xs text-[var(--cf-text-secondary)]">
+                  Status:{' '}
+                  <span className="font-semibold text-[var(--cf-text)]">
+                    {pushState === 'push_active'
+                      ? 'Push subscription active'
+                      : pushState === 'permission_denied'
+                      ? 'Permission denied by user'
+                      : pushState === 'unsupported'
+                      ? 'Browser lacks Push API support'
+                      : 'Notifications disabled'}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleSendTestPush}
+                    disabled={isTestingPush || pushState !== 'push_active'}
+                    className="text-xs gap-1.5"
+                  >
+                    <Send className="w-3.5 h-3.5 text-slate-500" />
+                    {isTestingPush ? 'Sending...' : 'Test notification'}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="text-[11px] text-[var(--cf-text-tertiary)] pt-0.5">
+                Note: CampusFlow dispatches standards-based Web Push via your browser&apos;s push service. Actual system display depends on browser permissions, OS notification settings, and device power/network state.
+              </div>
+
+              {testPushFeedback && (
+                <div
+                  className={`text-xs p-2.5 rounded-lg border flex items-center justify-between ${
+                    testPushFeedback.type === 'success'
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      : 'bg-rose-50 text-rose-800 border-rose-200'
+                  }`}
+                >
+                  <span>{testPushFeedback.text}</span>
+                  <button
+                    type="button"
+                    onClick={() => setTestPushFeedback(null)}
+                    className="hover:opacity-75 p-0.5 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Default Task Reminder Setting */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-xl bg-[var(--cf-surface-muted)] border border-[var(--cf-border-subtle)]">
               <div className="flex items-start gap-3">
                 <div className="p-2 rounded-lg bg-white border border-slate-200 text-slate-700">
-                  <Laptop className="h-4 w-4" />
+                  <Bell className="h-4 w-4" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-[var(--cf-text)]">Browser Push Notifications</h3>
+                  <h3 className="text-base font-bold text-[var(--cf-text)]">Default Task Reminder</h3>
                   <p className="text-sm text-[var(--cf-text-secondary)] mt-0.5">
-                    Receive immediate browser notifications when critical campus notices are published.
+                    Pre-select this reminder time whenever creating a new academic task.
                   </p>
                 </div>
               </div>
 
-              {browserPermission === 'unsupported' ? (
-                <span className="text-sm text-slate-400">Not supported on this browser</span>
-              ) : browserPermission === 'granted' ? (
-                <span className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200">
-                  <CheckCircle className="w-3.5 h-3.5" />
-                  Enabled
-                </span>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={async () => {
-                    const res = await requestBrowserNotificationPermission();
-                    setBrowserPermission(res);
-                  }}
+              <div className="flex items-center gap-2 shrink-0">
+                <select
+                  value={defaultReminderOffset}
+                  onChange={(e) => void handleDefaultReminderChange(e.target.value)}
+                  disabled={isSavingPrefs}
+                  className="h-9 px-3 border border-[var(--cf-border)] rounded-lg bg-[var(--cf-surface)] text-[var(--cf-text)] text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cf-brand)] cursor-pointer"
                 >
-                  <BellRing className="w-3.5 h-3.5 mr-1.5" />
-                  Enable Browser Alerts
-                </Button>
-              )}
+                  {DEFAULT_REMINDER_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Device Timezone */}
+            <div className="flex items-center justify-between p-4 rounded-xl bg-[var(--cf-surface-muted)] border border-[var(--cf-border-subtle)] text-xs">
+              <div className="flex items-center gap-2 text-[var(--cf-text-secondary)]">
+                <Globe className="h-3.5 w-3.5 text-slate-500" />
+                <span>Detected Device Timezone: <strong className="text-[var(--cf-text)] font-semibold">{userTimezone}</strong></span>
+              </div>
+              <span className="font-mono text-[10px] text-slate-400 uppercase">Authoritative IANA</span>
             </div>
 
             {/* In-App Notifications */}

@@ -13,6 +13,9 @@ import assignmentsRouter from './routes/assignments.route.js';
 import gmailRouter from './routes/gmail.route.js';
 import noticesRouter from './routes/notices.route.js';
 import notificationsRouter from './routes/notifications.route.js';
+import remindersRouter from './routes/reminders.route.js';
+import cronRouter from './routes/cron.route.js';
+import pushRouter from './routes/push.route.js';
 import webhooksRouter from './routes/webhooks.route.js';
 
 import { clerkAuth, requireAuthMiddleware } from './middleware/requireAuth.js';
@@ -102,6 +105,9 @@ apiRouter.use('/ai', requireAuthMiddleware, aiRouter);
 apiRouter.use('/gmail', gmailRouter);
 apiRouter.use('/notices', noticesRouter);
 apiRouter.use('/notifications', notificationsRouter);
+apiRouter.use('/reminders', requireAuthMiddleware, remindersRouter);
+apiRouter.use('/push', pushRouter);
+apiRouter.use('/cron', cronRouter);
 apiRouter.use('/campus-items', campusItemsRouter);
 
 // Mount under both /api and / to handle both direct /api routes and Vercel serverless rewrites

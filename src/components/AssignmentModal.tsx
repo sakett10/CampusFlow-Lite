@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import type { Assignment, Course } from '../lib/types';
 import { isValidDateString } from '../lib/dateUtils';
+import { REMINDER_OPTIONS } from '../lib/reminderUtils';
+import { getClientTimezone } from '../lib/pushNotifications';
 import { X, Calendar, Clock, Bell, CheckSquare } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from './ui/Button';
@@ -12,6 +14,7 @@ type AssignmentModalProps = {
   onSave: (assignment: Omit<Assignment, 'id'>) => void;
   initialData?: Assignment | null;
   courses?: Course[];
+  defaultReminderOffset?: string;
 };
 
 export default function AssignmentModal({
@@ -20,6 +23,7 @@ export default function AssignmentModal({
   onSave,
   initialData,
   courses = [],
+  defaultReminderOffset = '30m_before',
 }: AssignmentModalProps) {
   const [formData, setFormData] = useState({
     title: initialData?.title || '',
@@ -27,10 +31,42 @@ export default function AssignmentModal({
     dueDate: initialData?.dueDate || '',
     dueTime: initialData?.dueTime || '',
     priority: initialData?.priority || ('medium' as 'low' | 'medium' | 'high' | 'urgent'),
-    reminder: initialData?.reminder || 'none',
+    reminder: initialData ? (initialData.reminder || 'none') : defaultReminderOffset,
     courseId: initialData?.courseId || '',
     status: initialData?.status || ('PENDING' as Assignment['status']),
   });
+
+  const [customDate, setCustomDate] = useState(() => {
+    if (initialData?.reminder === 'custom' && initialData.reminderRemindAt) {
+      try {
+        const d = new Date(initialData.reminderRemindAt);
+        if (isNaN(d.getTime())) return '';
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      } catch {
+        return '';
+      }
+    }
+    return '';
+  });
+
+  const [customTime, setCustomTime] = useState(() => {
+    if (initialData?.reminder === 'custom' && initialData.reminderRemindAt) {
+      try {
+        const d = new Date(initialData.reminderRemindAt);
+        if (isNaN(d.getTime())) return '';
+        const hours = String(d.getHours()).padStart(2, '0');
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        return `${hours}:${minutes}`;
+      } catch {
+        return '';
+      }
+    }
+    return '';
+  });
+
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -56,6 +92,18 @@ export default function AssignmentModal({
       return;
     }
 
+    if (formData.reminder === 'custom') {
+      if (!customDate || !customTime) {
+        setError('Please choose both a date and time for your custom reminder.');
+        return;
+      }
+    } else if (formData.reminder && formData.reminder !== 'none') {
+      if (!formData.dueDate || !formData.dueDate.trim()) {
+        setError('A due date is required for relative reminders (e.g. 30 min before). Or choose "Custom date and time".');
+        return;
+      }
+    }
+
     onSave({
       title: formData.title.trim(),
       description: formData.description.trim(),
@@ -63,6 +111,9 @@ export default function AssignmentModal({
       dueTime: formData.dueTime || null,
       priority: formData.priority,
       reminder: formData.reminder === 'none' ? null : formData.reminder,
+      customDate: formData.reminder === 'custom' ? customDate : null,
+      customTime: formData.reminder === 'custom' ? customTime : null,
+      timezone: getClientTimezone(),
       courseId: formData.courseId || null,
       status: formData.status,
       source: initialData?.source || 'manual',
@@ -215,14 +266,55 @@ export default function AssignmentModal({
                     onChange={(e) => setFormData({ ...formData, reminder: e.target.value })}
                     className="w-full h-10 px-3 border border-[var(--cf-border)] rounded-xl bg-[var(--cf-surface)] text-[var(--cf-text)] text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cf-brand)] focus-visible:border-transparent cursor-pointer transition-shadow"
                   >
-                    <option value="none">No reminder</option>
-                    <option value="2h_before">2 hours before</option>
-                    <option value="morning_of">Morning of (9:00 AM)</option>
-                    <option value="1d_before">1 day before</option>
-                    <option value="2d_before">2 days before</option>
+                    {REMINDER_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
+
+              {formData.reminder === 'custom' && (
+                <div className="p-3.5 rounded-xl border border-[var(--cf-border)] bg-[var(--cf-surface-muted)] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-[var(--cf-text)] flex items-center gap-1.5">
+                      <Bell className="w-3.5 h-3.5 text-[var(--cf-brand)]" />
+                      Custom Reminder Time
+                    </span>
+                    <span className="text-[10px] text-[var(--cf-text-tertiary)] font-mono">Authoritative</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label htmlFor="customReminderDate" className="block text-xs font-medium text-[var(--cf-text-secondary)] mb-1">
+                        Date *
+                      </label>
+                      <Input
+                        id="customReminderDate"
+                        type="date"
+                        value={customDate}
+                        onChange={(e) => setCustomDate(e.target.value)}
+                        className="text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="customReminderTime" className="block text-xs font-medium text-[var(--cf-text-secondary)] mb-1">
+                        Time *
+                      </label>
+                      <Input
+                        id="customReminderTime"
+                        type="time"
+                        value={customTime}
+                        onChange={(e) => setCustomTime(e.target.value)}
+                        className="text-xs"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-[var(--cf-text-tertiary)] leading-tight">
+                    Reminder will be delivered via Web Push at this exact date and time in your local timezone ({getClientTimezone()}).
+                  </p>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>

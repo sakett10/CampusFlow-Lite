@@ -8,6 +8,8 @@ import type {
   NoticePriority,
   NoticeStatus,
   Assignment,
+  NoticeAttachmentMetadata,
+  SupportedAttachmentMimeType,
 } from '../types.js';
 import { validateNoticeCandidate, NoticeValidationError } from './noticeValidator.js';
 import {
@@ -15,6 +17,8 @@ import {
   parseGmailMessageDetails,
   toStructuredGmailMessage,
   GmailNotConnectedError,
+  processNoticeAttachments,
+  type MessagePartLike,
 } from './gmail.service.js';
 import { noticeAnalyzerService } from './noticeAnalyzer.service.js';
 import { notificationsService } from './notifications.service.js';
@@ -549,7 +553,45 @@ export const noticesService = {
     }
 
     const { rows } = await pool.query(query, values);
-    return rows.map((r) => mapRowToNotice(r, filters.userId));
+    const notices = rows.map((r) => mapRowToNotice(r, filters.userId));
+    if (notices.length === 0) return [];
+
+    try {
+      const noticeIds = notices.map((n) => n.id);
+      const { rows: attRows } = await pool.query(
+        `SELECT id, notice_id, filename, mime_type, size_bytes, created_at
+         FROM notice_attachments
+         WHERE notice_id = ANY($1::uuid[])
+         ORDER BY created_at ASC`,
+        [noticeIds],
+      );
+
+      const attMap = new Map<string, NoticeAttachmentMetadata[]>();
+      for (const att of attRows) {
+        const list = attMap.get(att.notice_id) || [];
+        list.push({
+          id: att.id,
+          noticeId: att.notice_id,
+          filename: att.filename,
+          mimeType: att.mime_type as SupportedAttachmentMimeType,
+          sizeBytes: Number(att.size_bytes) || 0,
+          attachmentType: att.mime_type === 'application/pdf' ? 'pdf' : 'image',
+          createdAt: att.created_at instanceof Date ? att.created_at.toISOString() : new Date(att.created_at).toISOString(),
+        });
+        attMap.set(att.notice_id, list);
+      }
+
+      for (const n of notices) {
+        n.attachments = attMap.get(n.id) || [];
+      }
+    } catch {
+      // If notice_attachments is uninitialized, default to empty array
+      for (const n of notices) {
+        if (!n.attachments) n.attachments = [];
+      }
+    }
+
+    return notices;
   },
 
   getById: async (
@@ -594,24 +636,44 @@ export const noticesService = {
       if (!isOwner) {
         return null;
       }
-      return notice;
+    } else {
+      // Institutional notice authorization:
+      const isCampusNotice =
+        notice.createdByUserId === SYSTEM_INSTITUTIONAL_USER_ID ||
+        isReviewerUserId(notice.createdByUserId) ||
+        (isNonProd &&
+          (notice.createdByUserId.startsWith('reviewer') ||
+            notice.createdByUserId.startsWith('admin')));
+
+      if (!isOwner && !isCampusNotice) {
+        return null;
+      }
+
+      // Students cannot view unpublished institutional notices (avoids leaking draft existence)
+      if (!isReviewer && !isOwner && notice.status !== 'published') {
+        return null;
+      }
     }
 
-    // Institutional notice authorization:
-    const isCampusNotice =
-      notice.createdByUserId === SYSTEM_INSTITUTIONAL_USER_ID ||
-      isReviewerUserId(notice.createdByUserId) ||
-      (isNonProd &&
-        (notice.createdByUserId.startsWith('reviewer') ||
-          notice.createdByUserId.startsWith('admin')));
-
-    if (!isOwner && !isCampusNotice) {
-      return null;
-    }
-
-    // Students cannot view unpublished institutional notices (avoids leaking draft existence)
-    if (!isReviewer && !isOwner && notice.status !== 'published') {
-      return null;
+    try {
+      const { rows: attRows } = await db.query(
+        `SELECT id, notice_id, filename, mime_type, size_bytes, created_at
+         FROM notice_attachments
+         WHERE notice_id = $1
+         ORDER BY created_at ASC`,
+        [notice.id],
+      );
+      notice.attachments = attRows.map((att) => ({
+        id: att.id,
+        noticeId: att.notice_id,
+        filename: att.filename,
+        mimeType: att.mime_type as SupportedAttachmentMimeType,
+        sizeBytes: Number(att.size_bytes) || 0,
+        attachmentType: att.mime_type === 'application/pdf' ? 'pdf' : 'image',
+        createdAt: att.created_at instanceof Date ? att.created_at.toISOString() : new Date(att.created_at).toISOString(),
+      }));
+    } catch {
+      notice.attachments = [];
     }
 
     return notice;
@@ -860,10 +922,24 @@ export const noticesService = {
     const structuredMessage = toStructuredGmailMessage(messageDetails);
     const candidate = await noticeAnalyzerService.analyze(structuredMessage);
 
-    return noticesService.createFromCandidate(userId, candidate, {
+    const createdNotice = await noticesService.createFromCandidate(userId, candidate, {
       connectionId: conn.id,
       accountEmail: conn.google_email,
     });
+
+    try {
+      await processNoticeAttachments(
+        gmail,
+        userId,
+        createdNotice.id,
+        messageId,
+        (response.data.payload as MessagePartLike) || undefined,
+      );
+    } catch (attErr) {
+      console.warn('Failed to process attachments in createFromGmailMessage:', attErr);
+    }
+
+    return createdNotice;
   },
 
   convertToTask: async (

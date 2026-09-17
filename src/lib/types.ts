@@ -8,6 +8,13 @@ export type Assignment = {
   status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
   dueTime?: string | null;
   reminder?: string | null;
+  reminderRemindAt?: string | null;
+  reminderTimezone?: string | null;
+  reminderStatus?: 'pending' | 'processing' | 'sent' | 'failed' | 'cancelled' | null;
+  customDate?: string | null;
+  customTime?: string | null;
+  customRemindAt?: string | null;
+  timezone?: string | null;
   priority?: 'low' | 'medium' | 'high' | 'urgent';
   source?: string;
   sourceId?: string | null;
@@ -77,6 +84,24 @@ export interface NoticeCandidate {
 }
 
 
+export type SupportedAttachmentMimeType =
+  | 'application/pdf'
+  | 'image/jpeg'
+  | 'image/png'
+  | 'image/webp';
+
+export type AttachmentType = 'pdf' | 'image';
+
+export interface NoticeAttachment {
+  id: string;
+  noticeId: string;
+  filename: string;
+  mimeType: SupportedAttachmentMimeType;
+  sizeBytes: number;
+  attachmentType: AttachmentType;
+  createdAt: string;
+}
+
 export interface Notice {
   id: string;
   createdByUserId: string;
@@ -90,6 +115,7 @@ export interface Notice {
   venue?: string | null;
   links?: Array<{ label: string; url: string }>;
   documents?: Array<{ label: string; url: string }>;
+  attachments?: NoticeAttachment[];
   sourceProvider: string;
   sourceConnectionId?: string | null;
   sourceAccountEmail?: string | null;

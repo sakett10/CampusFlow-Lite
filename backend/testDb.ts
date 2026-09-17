@@ -163,6 +163,57 @@ export function createTestPool(): pg.Pool {
       suppressed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT uq_notice_suppression_account_msg UNIQUE (source_account_email, source_message_id)
     );
+
+    CREATE TABLE notice_attachments (
+      id UUID PRIMARY KEY,
+      notice_id UUID NOT NULL REFERENCES notices(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL,
+      filename TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL DEFAULT 0,
+      storage_key TEXT NOT NULL,
+      gmail_message_id TEXT,
+      gmail_attachment_id TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE task_reminders (
+      id UUID PRIMARY KEY,
+      task_id UUID NOT NULL REFERENCES assignments(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL,
+      remind_at TIMESTAMP NOT NULL,
+      timezone TEXT NOT NULL DEFAULT 'UTC',
+      reminder_type TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'sent', 'failed', 'cancelled')),
+      sent_at TIMESTAMP,
+      claimed_at TIMESTAMP,
+      attempt_count INTEGER NOT NULL DEFAULT 0,
+      claim_expires_at TIMESTAMP,
+      retry_count INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT uq_task_reminders_task_id UNIQUE (task_id)
+    );
+
+    CREATE TABLE push_subscriptions (
+      id UUID PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      endpoint TEXT NOT NULL UNIQUE,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      user_agent TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE user_preferences (
+      user_id TEXT PRIMARY KEY,
+      default_reminder_offset TEXT NOT NULL DEFAULT '30m_before',
+      timezone TEXT NOT NULL DEFAULT 'UTC',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
 
@@ -170,6 +221,13 @@ export function createTestPool(): pg.Pool {
 
   const { Pool, Client } = db.adapters.createPg();
   const testPool = new Pool() as unknown as pg.Pool;
+  const origPoolQuery = testPool.query.bind(testPool);
+  testPool.query = ((...args: unknown[]) => {
+    if (typeof args[0] === 'string' && /SKIP\s+LOCKED/i.test(args[0])) {
+      args[0] = args[0].replace(/SKIP\s+LOCKED/gi, '');
+    }
+    return (origPoolQuery as (...a: unknown[]) => unknown)(...args);
+  }) as typeof testPool.query;
 
   const activeLocks = new Map<string, symbol>();
   const lockWaiters = new Map<string, Array<() => void>>();
@@ -229,6 +287,11 @@ export function createTestPool(): pg.Pool {
         }
         activeLocks.set(lockKey, clientId);
         return { rows: [] };
+      }
+
+      // pg-mem does not support SKIP LOCKED syntax
+      if (typeof args[0] === 'string' && /SKIP\s+LOCKED/i.test(args[0])) {
+        args[0] = args[0].replace(/SKIP\s+LOCKED/gi, '');
       }
 
       return origQuery(...args);

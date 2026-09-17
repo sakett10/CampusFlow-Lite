@@ -24,6 +24,16 @@ import { encryptToken, decryptToken } from './crypto.service.js';
 import { classifyEmail } from './emailClassifier.service.js';
 import { extractDeadlineAndTask } from './deadlineParser.service.js';
 import { isStudentInstitutionSender } from '../config/institutions.js';
+import {
+  getObjectStorageDriver,
+  sanitizeAttachmentFilename,
+  generateStorageKey,
+  normalizeAttachmentMimeType,
+  MAX_ATTACHMENT_SIZE_BYTES,
+  MAX_ATTACHMENTS_PER_NOTICE,
+} from './objectStorage.service.js';
+import { attachmentsService } from './attachments.service.js';
+import type { SupportedAttachmentMimeType } from '../types.js';
 
 export function getOAuthCredentials() {
   const clientId = process.env.GOOGLE_CLIENT_ID || process.env.GMAIL_CLIENT_ID;
@@ -162,22 +172,19 @@ export interface SafeGmailMessageDetail {
   to: string;
   subject: string;
   date: string;
-  internalDate?: string | null;
   snippet: string;
   body: string;
   bodyText: string;
+  internalDate?: string;
 }
 
 export function getHeaderValue(
   headers: Array<{ name?: string | null; value?: string | null }> | undefined,
   name: string,
 ): string {
-  if (!headers || !Array.isArray(headers)) {
-    return '';
-  }
-  const target = name.toLowerCase();
+  if (!headers || !Array.isArray(headers)) return '';
   const header = headers.find(
-    (h) => h.name?.toLowerCase() === target,
+    (h) => h?.name?.toLowerCase() === name.toLowerCase(),
   );
   return header?.value || '';
 }
@@ -197,9 +204,15 @@ function decodeBase64Url(data: string): string {
   }
 }
 
-interface MessagePartLike {
+export interface MessagePartLike {
+  partId?: string | null;
   mimeType?: string | null;
-  body?: { data?: string | null } | null;
+  filename?: string | null;
+  body?: {
+    data?: string | null;
+    attachmentId?: string | null;
+    size?: number | null;
+  } | null;
   parts?: MessagePartLike[] | null;
 }
 
@@ -298,6 +311,126 @@ export function parseGmailMessageDetails(
   }
 
   return result;
+}
+
+export function extractSupportedAttachmentParts(payload?: MessagePartLike | null): Array<{
+  filename: string;
+  mimeType: SupportedAttachmentMimeType;
+  attachmentId?: string | null;
+  data?: string | null;
+  sizeBytes?: number | null;
+}> {
+  if (!payload) return [];
+  const results: Array<{
+    filename: string;
+    mimeType: SupportedAttachmentMimeType;
+    attachmentId?: string | null;
+    data?: string | null;
+    sizeBytes?: number | null;
+  }> = [];
+
+  function traverse(part: MessagePartLike) {
+    if (part.filename && typeof part.filename === 'string' && part.filename.trim().length > 0) {
+      const normalizedMime = normalizeAttachmentMimeType(part.mimeType || '');
+      if (normalizedMime) {
+        results.push({
+          filename: part.filename.trim(),
+          mimeType: normalizedMime,
+          attachmentId: part.body?.attachmentId || null,
+          data: part.body?.data || null,
+          sizeBytes: part.body?.size || null,
+        });
+      }
+    }
+
+    if (part.parts && Array.isArray(part.parts)) {
+      for (const subPart of part.parts) {
+        traverse(subPart);
+      }
+    }
+  }
+
+  traverse(payload);
+  return results.slice(0, MAX_ATTACHMENTS_PER_NOTICE);
+}
+
+/**
+ * Downloads and persists attachments to private object storage and notice_attachments table.
+ * Strictly called AFTER notice creation succeeds. Failures are isolated and do NOT abort notice creation.
+ */
+export async function processNoticeAttachments(
+  gmail: ReturnType<typeof google.gmail>,
+  userId: string,
+  noticeId: string,
+  messageId: string,
+  payload?: MessagePartLike | null,
+): Promise<void> {
+  const supportedParts = extractSupportedAttachmentParts(payload);
+  if (supportedParts.length === 0) return;
+
+  for (const part of supportedParts) {
+    try {
+      if (part.sizeBytes && part.sizeBytes > MAX_ATTACHMENT_SIZE_BYTES) {
+        console.warn(`Attachment ${part.filename} exceeds 10MB limit, skipping.`);
+        continue;
+      }
+
+      let buffer: Buffer | null = null;
+      if (part.data) {
+        buffer = Buffer.from(part.data, 'base64url');
+      } else if (part.attachmentId) {
+        const attRes = await gmail.users.messages.attachments.get({
+          userId: 'me',
+          messageId,
+          id: part.attachmentId,
+        });
+        const rawData = attRes.data?.data;
+        if (rawData) {
+          buffer = Buffer.from(rawData, 'base64url');
+        }
+      }
+
+      if (!buffer || buffer.length === 0) {
+        continue;
+      }
+
+      if (buffer.length > MAX_ATTACHMENT_SIZE_BYTES) {
+        console.warn(`Attachment ${part.filename} size exceeds 10MB limit, skipping.`);
+        continue;
+      }
+
+      const safeFilename = sanitizeAttachmentFilename(part.filename);
+      const storageKey = generateStorageKey(noticeId, safeFilename);
+
+      const driver = getObjectStorageDriver();
+      await driver.put(storageKey, buffer, part.mimeType);
+
+      try {
+        await attachmentsService.createAttachmentRecord({
+          noticeId,
+          userId,
+          filename: safeFilename,
+          mimeType: part.mimeType,
+          sizeBytes: buffer.length,
+          storageKey,
+          gmailMessageId: messageId,
+          gmailAttachmentId: part.attachmentId || null,
+        });
+      } catch (dbErr) {
+        try {
+          await driver.delete(storageKey);
+        } catch (cleanupErr) {
+          console.warn(`Failed to clean up orphaned storage object ${storageKey}:`, cleanupErr);
+        }
+        throw dbErr;
+      }
+    } catch (attErr) {
+      console.warn(
+        `Failed to store attachment ${part.filename} for notice ${noticeId}:`,
+        attErr instanceof Error ? attErr.message : String(attErr),
+      );
+    }
+  }
 }
 
 export class GmailNotConnectedError extends Error {
@@ -860,7 +993,7 @@ export async function recoverHistoricalGmailMessages(
           const syncSourceType: 'institutional' | 'gmail_personal' =
             isInstitutionalBroadcast ? 'institutional' : 'gmail_personal';
 
-          await noticesService.createFromCandidate(userId, candidate, {
+          const createdNotice = await noticesService.createFromCandidate(userId, candidate, {
             connectionId: conn.id,
             accountEmail: conn.google_email,
             initialStatus: 'published',
@@ -869,6 +1002,15 @@ export async function recoverHistoricalGmailMessages(
           });
           stats.noticesCreated++;
           stats.recoveredCount++;
+
+          // Ingest supported attachments into private object storage & notice_attachments
+          await processNoticeAttachments(
+            gmail,
+            userId,
+            createdNotice.id,
+            msgId,
+            (messageResponse.data.payload as MessagePartLike) || undefined,
+          );
         } catch {
           // Ignored if duplicate
         }
@@ -1174,13 +1316,18 @@ export const syncGmailMessagesForUser = async (
             format: 'full',
           });
           const parsed = parseGmailMessageDetails(messageResponse.data, msg.id);
-          return { id: msg.id, details: parsed, error: null };
+          return {
+            id: msg.id,
+            details: parsed,
+            payload: (messageResponse.data.payload as MessagePartLike) || undefined,
+            error: null,
+          };
         } catch (fetchErr) {
           console.error(
             `Failed to fetch Gmail message ${msg.id}:`,
             fetchErr instanceof Error ? fetchErr.message : String(fetchErr),
           );
-          return { id: msg.id, details: null, error: fetchErr };
+          return { id: msg.id, details: null, payload: undefined, error: fetchErr };
         }
       }),
     );
@@ -1412,6 +1559,15 @@ export const syncGmailMessagesForUser = async (
                 if (createdNotice.status === 'pending') {
                   pendingNoticesCount++;
                 }
+
+                // Ingest supported attachments into private object storage & notice_attachments
+                await processNoticeAttachments(
+                  gmail,
+                  userId,
+                  createdNotice.id,
+                  msgId,
+                  result.payload,
+                );
               } catch (noticeErr) {
                 if (
                   !(noticeErr instanceof DuplicateNoticeError) &&
