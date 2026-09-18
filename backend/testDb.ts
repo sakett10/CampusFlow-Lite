@@ -36,6 +36,11 @@ export function createTestPool(): pg.Pool {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- DB-level guarantee that one user cannot create two tasks from the same source notice.
+    CREATE UNIQUE INDEX assignments_user_notice_unique
+      ON assignments (user_id, source, source_id)
+      WHERE source = 'notice';
+
     CREATE TABLE campus_items (
       id UUID PRIMARY KEY,
       user_id TEXT NOT NULL,

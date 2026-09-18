@@ -1018,6 +1018,9 @@ export const NoticeBoard: React.FC = () => {
               dueDate: taskData.dueDate,
               dueTime: taskData.dueTime,
               reminder: taskData.reminder,
+              customDate: taskData.customDate,
+              customTime: taskData.customTime,
+              timezone: taskData.timezone,
               priority: taskData.priority,
               courseId: taskData.courseId,
             });

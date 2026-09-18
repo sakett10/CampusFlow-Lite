@@ -12,6 +12,7 @@ import type {
   SupportedAttachmentMimeType,
 } from '../types.js';
 import { validateNoticeCandidate, NoticeValidationError } from './noticeValidator.js';
+import { sanitizeErrorMessage } from './reminders.service.js';
 import {
   createAuthenticatedGmailClient,
   parseGmailMessageDetails,
@@ -952,6 +953,10 @@ export const noticesService = {
       reminder?: string | null;
       priority?: 'low' | 'medium' | 'high' | 'urgent';
       courseId?: string | null;
+      customRemindAt?: string | null;
+      customDate?: string | null;
+      customTime?: string | null;
+      timezone?: string | null;
     },
   ): Promise<{ task: Assignment; notice: Notice; alreadyConverted: boolean }> => {
     const client = await pool.connect();
@@ -1059,6 +1064,18 @@ export const noticesService = {
       const dueTime = customData?.dueTime || null;
       const reminder = customData?.reminder || (dueDate ? '1d_before' : null);
       const courseId = customData?.courseId || null;
+      const customDate = customData?.customDate || null;
+      const customTime = customData?.customTime || null;
+      const timezone = customData?.timezone || null;
+
+      // A 'custom' reminder is only computable when the client supplies the custom date/time it
+      // collected; otherwise upsertTaskReminder would fail mid-transaction and roll everything back.
+      if (reminder === 'custom' && !(customDate && customTime) && !customData?.customRemindAt) {
+        throw new NoticeValidationError(
+          'Custom reminder requires a reminder date and time',
+          ['customDate', 'customTime'],
+        );
+      }
 
       // 5. Create the assignment using the same transaction client
       const task = await assignmentsService.add(
@@ -1074,6 +1091,9 @@ export const noticesService = {
           courseId,
           source: 'notice',
           sourceId: rawNotice.id,
+          customDate,
+          customTime,
+          timezone,
         },
         client,
       );
@@ -1116,6 +1136,47 @@ export const noticesService = {
       } catch {
         // Ignore rollback failure if connection was severed
       }
+      // A concurrent conversion for the same user/notice committed first; the DB-level unique index
+      // (assignments_user_notice_unique) guarantees one task per user/notice, so surface the
+      // winner's task idempotently instead of failing the request. pg-mem omits the constraint
+      // name on 23505, so the constraint check is only applied when present, and the winner-row
+      // lookup below guards against any other unique violation slipping through.
+      const pgErr = err as { code?: string; constraint?: string };
+      if (
+        pgErr.code === '23505' &&
+        (!pgErr.constraint || pgErr.constraint === 'assignments_user_notice_unique')
+      ) {
+        // rawNotice is try-scoped; re-read the row after rollback (conversion never deletes it).
+        // If it cannot be re-read (e.g. deleted in the meantime), fall through and rethrow rather
+        // than fabricate a Notice.
+        const { rows: winnerRows } = await pool.query(
+          'SELECT * FROM assignments WHERE user_id = $1 AND source = $2 AND source_id = $3 LIMIT 1',
+          [userId, 'notice', noticeId],
+        );
+        if (winnerRows.length > 0) {
+          const { rows: freshNoticeRows } = await pool.query(
+            'SELECT * FROM notices WHERE id::text = $1',
+            [noticeId],
+          );
+          if (freshNoticeRows.length > 0) {
+            const winnerTask = mapRowToAssignment(winnerRows[0]);
+            return {
+              task: winnerTask,
+              notice: {
+                ...mapRowToNotice(freshNoticeRows[0], userId),
+                isConverted: true,
+                convertedToTaskId: winnerTask.id,
+                convertedAt: winnerTask.createdAt || null,
+              },
+              alreadyConverted: true,
+            };
+          }
+        }
+      }
+      // Sanitized server-side diagnostics only; the HTTP response stays generic.
+      console.error(
+        `Failed to convert notice to task: noticeId=${noticeId} userId=${userId} error=${sanitizeErrorMessage(err)}`,
+      );
       throw err;
     } finally {
       client.release();

@@ -214,6 +214,9 @@ router.post('/:id/convert-to-task', requireAuth(), noticeConvertLimiter, async (
     ) {
       return res.status(404).json({ error: (error as Error).message });
     }
+    if (error instanceof NoticeValidationError) {
+      return res.status(422).json({ error: error.message, fieldErrors: error.fieldErrors });
+    }
     console.error('Failed to convert notice to task:', (error as Error)?.message || error);
     return res.status(500).json({ error: 'Failed to convert notice to task' });
   }

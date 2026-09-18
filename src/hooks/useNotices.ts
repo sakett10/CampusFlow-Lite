@@ -258,6 +258,9 @@ export function useNotices(initialFilters?: NoticeFiltersState) {
       reminder?: string | null;
       priority?: 'low' | 'medium' | 'high' | 'urgent';
       courseId?: string | null;
+      customDate?: string | null;
+      customTime?: string | null;
+      timezone?: string | null;
     },
   ) => {
     const headers = await getAuthHeaders();

@@ -47,6 +47,12 @@ describe('Task System & Lifecycle', () => {
   const mockNoticeId = '11111111-1111-1111-1111-111111111111';
 
   beforeEach(async () => {
+    // Isolate each test: the DB-level unique (user_id, source, source_id) guard for notice-sourced
+    // tasks would otherwise see this suite's repeated fixture as a duplicate conversion.
+    await pool.query('DELETE FROM task_reminders');
+    await pool.query('DELETE FROM assignments');
+    await pool.query('DELETE FROM notices');
+
     await pool.query(
       `INSERT INTO notices (id, created_by_user_id, title, summary, category, priority, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7)

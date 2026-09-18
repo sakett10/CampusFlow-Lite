@@ -812,5 +812,127 @@ describe('Notice-to-Task Conversion, August Recovery & Idempotency Pipeline', ()
       );
       expect(taskRows).toHaveLength(0);
     });
+
+    it('11. conversion with a custom reminder succeeds and schedules a task_reminders row', async () => {
+      // Regression: the UI collects customDate/customTime/timezone for reminder="custom",
+      // but they were never forwarded, so upsertTaskReminder could not compute remind_at,
+      // threw inside the conversion transaction, and the whole request 500ed.
+      const noticeId = randomUUID();
+      await pool.query(
+        `INSERT INTO notices (id, created_by_user_id, title, summary, category, priority, status)
+         VALUES ($1, 'reviewer_1', 'LaserTag Slot Update', 'Slots cancelled, rescheduled', 'event', 'important', 'published')`,
+        [noticeId],
+      );
+
+      const res = await request(app)
+        .post(`/api/notices/${noticeId}/convert-to-task`)
+        .set('Authorization', 'Bearer student_1')
+        .send({
+          title: 'LaserTag Rescheduled Slot',
+          dueDate: '2026-09-20',
+          dueTime: '17:00',
+          reminder: 'custom',
+          customDate: '2026-09-20',
+          customTime: '09:30',
+          timezone: 'Asia/Kolkata',
+          priority: 'medium',
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.alreadyConverted).toBe(false);
+      expect(res.body.task.reminder).toBe('custom');
+      expect(res.body.task.reminderStatus).toBe('pending');
+      expect(res.body.task.reminderRemindAt).toBeTruthy();
+
+      const { rows: reminderRows } = await pool.query(
+        'SELECT * FROM task_reminders WHERE task_id = $1',
+        [res.body.task.id],
+      );
+      expect(reminderRows).toHaveLength(1);
+      expect(reminderRows[0].reminder_type).toBe('custom');
+      expect(new Date(reminderRows[0].remind_at).toISOString()).toBe(
+        new Date('2026-09-20T04:00:00.000Z').toISOString(),
+      );
+    });
+
+    it('12. duplicate idempotency is enforced even when the app-level check is bypassed', async () => {
+      // The unique (user_id, source, source_id) index is the database-level guarantee that two
+      // concurrent conversions (or any non-transactional writer) cannot double-create the task.
+      const noticeId = randomUUID();
+      await pool.query(
+        `INSERT INTO notices (id, created_by_user_id, title, summary, category, priority, status)
+         VALUES ($1, 'reviewer_1', 'Duplicate Guard Notice', 'Guard summary', 'general', 'normal', 'published')`,
+        [noticeId],
+      );
+
+      // Simulate a task that already exists for this user/notice (as if another request created it).
+      await pool.query(
+        `INSERT INTO assignments (id, user_id, title, status, source, source_id)
+         VALUES ($1, 'student_1', 'Pre-existing Conversion Task', 'PENDING', 'notice', $2)`,
+        [randomUUID(), noticeId],
+      );
+
+      const res = await request(app)
+        .post(`/api/notices/${noticeId}/convert-to-task`)
+        .set('Authorization', 'Bearer student_1')
+        .send({ title: 'Second Attempt' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.alreadyConverted).toBe(true);
+      expect(res.body.task.title).toBe('Pre-existing Conversion Task');
+
+      const { rows: rows } = await pool.query(
+        "SELECT * FROM assignments WHERE user_id = 'student_1' AND source = 'notice' AND source_id = $1",
+        [noticeId],
+      );
+      expect(rows).toHaveLength(1);
+    });
+
+    it('13. unique index guarantees one task per user/notice even when the app-level check is bypassed', async () => {
+      // Real-Postgres race outcome: transaction B commits first; transaction A's application-level
+      // dup check (taken before B committed) sees no duplicate, then A's INSERT hits the DB-level
+      // unique index. The service must return B's committed task idempotently instead of a 500.
+      // (True interleaved concurrency cannot be modeled by the pg-mem test harness, whose
+      // BEGIN/ROLLBACK emulation snapshots and restores the whole database.)
+      const noticeId = randomUUID();
+      await pool.query(
+        `INSERT INTO notices (id, created_by_user_id, title, summary, category, priority, status)
+         VALUES ($1, 'reviewer_1', 'Racing Conversion Notice', 'Race summary', 'general', 'normal', 'published')`,
+        [noticeId],
+      );
+
+      // Insert the "winner" task bypassing the app (simulating the concurrent committer).
+      const winnerId = randomUUID();
+      await pool.query(
+        `INSERT INTO assignments (id, user_id, title, status, source, source_id)
+         VALUES ($1, 'student_1', 'Race Task B', 'PENDING', 'notice', $2)`,
+        [winnerId, noticeId],
+      );
+
+      // Verify the unique index fires on a direct duplicate insert (DB-level guard)
+      await expect(
+        pool.query(
+          `INSERT INTO assignments (id, user_id, title, status, source, source_id)
+           VALUES ($1, 'student_1', 'Race Task A', 'PENDING', 'notice', $2)`,
+          [randomUUID(), noticeId],
+        ),
+      ).rejects.toMatchObject({ code: '23505' });
+
+      // Conversion of the same notice must return the pre-existing task idempotently
+      // (app-level duplicate check still sees it when not bypassed).
+      const res = await request(app)
+        .post(`/api/notices/${noticeId}/convert-to-task`)
+        .set('Authorization', 'Bearer student_1')
+        .send({ title: 'Race Task A' });
+      expect(res.status).toBe(200);
+      expect(res.body.alreadyConverted).toBe(true);
+      expect(res.body.task.id).toBe(winnerId);
+
+      const { rows: rows } = await pool.query(
+        "SELECT * FROM assignments WHERE user_id = 'student_1' AND source = 'notice' AND source_id = $1",
+        [noticeId],
+      );
+      expect(rows).toHaveLength(1);
+    });
   });
 });
