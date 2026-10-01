@@ -688,6 +688,9 @@ export const noticesService = {
     if (existingRows.length === 0) return null;
 
     const current = mapRowToNotice(existingRows[0]);
+    if (current.sourceType === 'gmail_personal') {
+      throw new UnauthorizedNoticeAccessError('Personal Gmail notices cannot be moderated by reviewers');
+    }
     if (current.status === 'archived') {
       throw new InvalidNoticeStateTransitionError('Archived notices cannot be modified');
     }
@@ -757,6 +760,10 @@ export const noticesService = {
     }
 
     const current = mapRowToNotice(existingRows[0]);
+    if (current.sourceType === 'gmail_personal') {
+      throw new UnauthorizedNoticeAccessError('Personal Gmail notices cannot be moderated by reviewers');
+    }
+
     const allowed = ALLOWED_TRANSITIONS[current.status] || [];
 
     if (!allowed.includes(targetStatus)) {
@@ -789,7 +796,7 @@ export const noticesService = {
     const { rows } = await pool.query(query, values);
     const updatedNotice = mapRowToNotice(rows[0]);
 
-    if (targetStatus === 'published') {
+    if (targetStatus === 'published' && updatedNotice.sourceType === 'institutional') {
       try {
         await notificationsService.notifyNoticePublished(updatedNotice);
       } catch (err) {
@@ -824,6 +831,9 @@ export const noticesService = {
       return false;
     }
     const notice = noticeRows[0];
+    if (notice.source_type === 'gmail_personal') {
+      throw new UnauthorizedNoticeAccessError('Personal Gmail notices cannot be deleted through reviewer moderation');
+    }
     const dates = (notice.important_dates as Array<{ label: string; date: string }>) || [];
     const eventDate = dates.length > 0 ? dates[0].date : null;
     const fingerprint = generateNoticeFingerprint(
@@ -875,6 +885,10 @@ export const noticesService = {
 
 
   createFromGmailMessage: async (userId: string, messageId: string): Promise<Notice> => {
+    if (!isReviewerUserId(userId)) {
+      throw new UnauthorizedNoticeAccessError('Only reviewers can ingest institutional notices from Gmail');
+    }
+
     const { rows: connRows } = await pool.query(
       `
       SELECT id, google_email, access_token, refresh_token, expiry_date
@@ -926,6 +940,8 @@ export const noticesService = {
     const createdNotice = await noticesService.createFromCandidate(userId, candidate, {
       connectionId: conn.id,
       accountEmail: conn.google_email,
+      sourceType: 'institutional',
+      initialStatus: 'pending',
     });
 
     try {

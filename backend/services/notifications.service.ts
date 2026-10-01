@@ -411,6 +411,20 @@ export const notificationsService = {
   },
 
   notifyNoticePublished: async (notice: Notice): Promise<void> => {
+    if (!notice?.id) {
+      return;
+    }
+
+    // Safety invariant: Query trusted persisted notice data to ensure notice is institutional.
+    // Personal Gmail notices must NEVER trigger campus-wide institutional notifications.
+    const { rows: noticeRows } = await pool.query(
+      'SELECT id, source_type FROM notices WHERE id = $1',
+      [notice.id],
+    );
+    if (noticeRows.length === 0 || noticeRows[0].source_type !== 'institutional') {
+      return;
+    }
+
     const { rows } = await pool.query(
       "SELECT id FROM notifications WHERE notice_id = $1 AND type = 'notice_published' LIMIT 1",
       [notice.id],

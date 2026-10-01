@@ -253,6 +253,17 @@ export const assignmentsService = {
         }
       }
 
+      // 5. Validate course ownership inside the transaction if courseId is being set/updated
+      if (updates.courseId !== undefined && updates.courseId !== null) {
+        const courseCheck = await client.query(
+          'SELECT id FROM courses WHERE id = $1 AND user_id = $2',
+          [updates.courseId, userId],
+        );
+        if (courseCheck.rows.length === 0) {
+          throw new CourseNotFoundError();
+        }
+      }
+
       const fields: string[] = [];
       const values: unknown[] = [];
       let idx = 1;

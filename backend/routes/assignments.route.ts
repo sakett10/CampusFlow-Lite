@@ -58,6 +58,9 @@ router.put('/:id', async (req, res) => {
       res.json(item);
     }
   } catch (error) {
+    if (error instanceof CourseNotFoundError) {
+      return res.status(404).json({ error: error.message });
+    }
     if (
       error instanceof UnauthorizedSourceEmailError ||
       error instanceof UnauthorizedNoticeAccessError

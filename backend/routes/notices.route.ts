@@ -269,6 +269,9 @@ router.post('/from-gmail/:messageId', requireReviewerMiddleware, async (req, res
     const notice = await noticesService.createFromGmailMessage(userId, messageId);
     return res.status(201).json(notice);
   } catch (error) {
+    if (error instanceof UnauthorizedNoticeAccessError) {
+      return res.status(403).json({ error: error.message });
+    }
     if (error instanceof DuplicateNoticeError) {
       return res.status(409).json({
         error: error.message,
@@ -319,6 +322,9 @@ router.patch('/:id', requireReviewerMiddleware, async (req, res) => {
     }
     return res.json(updated);
   } catch (error) {
+    if (error instanceof UnauthorizedNoticeAccessError) {
+      return res.status(403).json({ error: error.message });
+    }
     if (error instanceof NoticeValidationError) {
       return res.status(422).json({
         error: error.message,
@@ -349,6 +355,9 @@ router.post('/:id/approve', requireReviewerMiddleware, async (req, res) => {
     const notice = await noticesService.approve(id);
     return res.json(notice);
   } catch (error) {
+    if (error instanceof UnauthorizedNoticeAccessError) {
+      return res.status(403).json({ error: error.message });
+    }
     if (error instanceof NoticeNotFoundError) {
       return res.status(404).json({ error: 'Notice not found' });
     }
@@ -375,6 +384,9 @@ router.post('/:id/publish', requireReviewerMiddleware, async (req, res) => {
     const notice = await noticesService.publish(id);
     return res.json(notice);
   } catch (error) {
+    if (error instanceof UnauthorizedNoticeAccessError) {
+      return res.status(403).json({ error: error.message });
+    }
     if (error instanceof NoticeNotFoundError) {
       return res.status(404).json({ error: 'Notice not found' });
     }
@@ -401,6 +413,9 @@ router.post('/:id/reject', requireReviewerMiddleware, async (req, res) => {
     const notice = await noticesService.reject(id);
     return res.json(notice);
   } catch (error) {
+    if (error instanceof UnauthorizedNoticeAccessError) {
+      return res.status(403).json({ error: error.message });
+    }
     if (error instanceof NoticeNotFoundError) {
       return res.status(404).json({ error: 'Notice not found' });
     }
@@ -427,6 +442,9 @@ router.post('/:id/archive', requireReviewerMiddleware, async (req, res) => {
     const notice = await noticesService.archive(id);
     return res.json(notice);
   } catch (error) {
+    if (error instanceof UnauthorizedNoticeAccessError) {
+      return res.status(403).json({ error: error.message });
+    }
     if (error instanceof NoticeNotFoundError) {
       return res.status(404).json({ error: 'Notice not found' });
     }
@@ -456,6 +474,9 @@ router.delete('/:id', requireReviewerMiddleware, async (req, res) => {
     }
     return res.status(204).send();
   } catch (error) {
+    if (error instanceof UnauthorizedNoticeAccessError) {
+      return res.status(403).json({ error: error.message });
+    }
     console.error('Failed to delete notice:', error);
     return res.status(500).json({ error: 'Failed to delete notice' });
   }
