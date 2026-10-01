@@ -934,5 +934,45 @@ describe('Notice-to-Task Conversion, August Recovery & Idempotency Pipeline', ()
       );
       expect(rows).toHaveLength(1);
     });
+
+    it('10. convert-to-task succeeds even when notice_attachments query fails without aborting transaction', async () => {
+      const noticeId = randomUUID();
+      await pool.query(
+        `INSERT INTO notices (id, created_by_user_id, title, summary, category, priority, status)
+         VALUES ($1, 'student_1', 'Notice with missing attachments table', 'Summary text', 'general', 'normal', 'published')`,
+        [noticeId],
+      );
+
+      // Mock pool.query to simulate missing notice_attachments table (42P01)
+      const origPoolQuery = pool.query.bind(pool);
+      const spyPoolQuery = vi.spyOn(pool, 'query').mockImplementation(async (...args: unknown[]) => {
+        const text = typeof args[0] === 'string' ? args[0] : (args[0] as { text?: string })?.text || '';
+        if (text.includes('FROM notice_attachments')) {
+          const missingTableErr = new Error('relation "notice_attachments" does not exist') as Error & { code: string };
+          missingTableErr.code = '42P01';
+          throw missingTableErr;
+        }
+        return (origPoolQuery as (...args: unknown[]) => unknown)(...args);
+      });
+
+      try {
+        const res = await request(app)
+          .post(`/api/notices/${noticeId}/convert-to-task`)
+          .set('Authorization', 'Bearer student_1')
+          .send({ title: 'Task with resilient attachments check' });
+
+        expect(res.status).toBe(201);
+        expect(res.body.task.title).toBe('Task with resilient attachments check');
+        expect(res.body.notice.isConverted).toBe(true);
+
+        const { rows } = await pool.query(
+          "SELECT * FROM assignments WHERE user_id = 'student_1' AND source = 'notice' AND source_id = $1",
+          [noticeId],
+        );
+        expect(rows).toHaveLength(1);
+      } finally {
+        spyPoolQuery.mockRestore();
+      }
+    });
   });
 });

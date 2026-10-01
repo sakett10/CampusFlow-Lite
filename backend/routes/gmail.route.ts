@@ -444,8 +444,14 @@ router.post('/sync', requireAuth(), gmailSyncLimiter, async (req, res) => {
 
   } catch (error) {
     if (error instanceof GmailNotConnectedError) {
+      const isCredentialFailure =
+        error.isCredentialFailure ||
+        error.message?.includes('expired') ||
+        error.message?.includes('revoked');
       return res.status(404).json({
-        error: 'Gmail account is not connected',
+        error: isCredentialFailure
+          ? 'Gmail credentials expired or access revoked. Please reconnect your account.'
+          : 'Gmail account is not connected',
       });
     }
 
@@ -480,8 +486,14 @@ router.post('/recover', requireAuth(), gmailSyncLimiter, async (req, res) => {
     return res.json(stats);
   } catch (error) {
     if (error instanceof GmailNotConnectedError) {
+      const isCredentialFailure =
+        error.isCredentialFailure ||
+        error.message?.includes('expired') ||
+        error.message?.includes('revoked');
       return res.status(404).json({
-        error: 'Gmail account is not connected',
+        error: isCredentialFailure
+          ? 'Gmail credentials expired or access revoked. Please reconnect your account.'
+          : 'Gmail account is not connected',
       });
     }
 

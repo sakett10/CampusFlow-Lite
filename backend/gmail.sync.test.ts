@@ -82,6 +82,7 @@ import {
   markGmailMessageAsProcessed,
   syncGmailMessagesForUser,
   GmailNotConnectedError,
+  isOAuthCredentialError,
 } from './services/gmail.service.js';
 import { setNoticeAnalyzer, resetNoticeAnalyzer } from './services/noticeAnalyzer.service.js';
 import { NoticeValidationError } from './services/noticeValidator.js';
@@ -651,9 +652,247 @@ describe('Gmail Sync Foundation (Phase C1 + C3 Automatic Notice Pipeline)', () =
       expect(res.status).toBe(500);
       expect(res.body.error).toBe('Failed to sync Gmail messages');
 
-      // Ensure tokens are NOT exposed
       expect(JSON.stringify(res.body)).not.toContain('secret_token_123');
       expect(JSON.stringify(res.body)).not.toContain('secret_refresh_456');
+    });
+
+    it('prunes dead connection and returns 404 with specific error message when Google OAuth returns unauthorized_client', async () => {
+      await pool.query(
+        `
+        INSERT INTO gmail_connections (
+          id, user_id, google_email, access_token, refresh_token, expiry_date
+        ) VALUES ($1, $2, $3, $4, $5, $6)
+        `,
+        [randomUUID(), 'user_A', 'userA@vitstudent.ac.in', 'token_A', 'refresh_A', 1700000000],
+      );
+
+      const authErr = Object.assign(new Error('invalid_grant: unauthorized_client'), {
+        code: 401,
+        response: { data: { error: 'unauthorized_client', error_description: 'Unauthorized client' } },
+      });
+      mockList.mockRejectedValueOnce(authErr);
+
+      const res = await request(app)
+        .post('/api/gmail/sync')
+        .set('Authorization', 'Bearer user_A');
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toContain('Gmail credentials expired or access revoked');
+
+      // Verify dead connection was pruned from database
+      const { rows } = await pool.query('SELECT * FROM gmail_connections WHERE user_id = $1', ['user_A']);
+      expect(rows).toHaveLength(0);
+
+      // Verify status endpoint now reflects disconnected
+      const statusRes = await request(app)
+        .get('/api/gmail/status')
+        .set('Authorization', 'Bearer user_A');
+      expect(statusRes.status).toBe(200);
+      expect(statusRes.body.connected).toBe(false);
+    });
+
+    it('prunes dead connection and returns 404 when Google OAuth returns invalid_grant', async () => {
+      await pool.query(
+        `
+        INSERT INTO gmail_connections (
+          id, user_id, google_email, access_token, refresh_token, expiry_date
+        ) VALUES ($1, $2, $3, $4, $5, $6)
+        `,
+        [randomUUID(), 'user_A', 'userA@vitstudent.ac.in', 'token_A', 'refresh_A', 1700000000],
+      );
+
+      const authErr = Object.assign(new Error('invalid_grant: Token has been expired or revoked.'), {
+        code: 400,
+        response: { data: { error: 'invalid_grant', error_description: 'Token has been expired or revoked.' } },
+      });
+      mockList.mockRejectedValueOnce(authErr);
+
+      const res = await request(app)
+        .post('/api/gmail/sync')
+        .set('Authorization', 'Bearer user_A');
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('Gmail credentials expired or access revoked. Please reconnect your account.');
+
+      const { rows } = await pool.query('SELECT * FROM gmail_connections WHERE user_id = $1', ['user_A']);
+      expect(rows).toHaveLength(0);
+
+      const statusRes = await request(app)
+        .get('/api/gmail/status')
+        .set('Authorization', 'Bearer user_A');
+      expect(statusRes.status).toBe(200);
+      expect(statusRes.body.connected).toBe(false);
+    });
+
+    it('does NOT delete connection on ordinary Gmail API 400 (e.g. invalid query syntax)', async () => {
+      await pool.query(
+        `
+        INSERT INTO gmail_connections (
+          id, user_id, google_email, access_token, refresh_token, expiry_date
+        ) VALUES ($1, $2, $3, $4, $5, $6)
+        `,
+        [randomUUID(), 'user_A', 'userA@vitstudent.ac.in', 'token_A', 'refresh_A', 1700000000],
+      );
+
+      const api400Err = Object.assign(new Error('Invalid query syntax'), {
+        code: 400,
+        status: 400,
+        response: {
+          status: 400,
+          data: {
+            error: {
+              code: 400,
+              message: 'Invalid query',
+              status: 'INVALID_ARGUMENT',
+            },
+          },
+        },
+      });
+      mockList.mockRejectedValueOnce(api400Err);
+
+      const res = await request(app)
+        .post('/api/gmail/sync')
+        .set('Authorization', 'Bearer user_A');
+
+      expect(res.status).toBe(500);
+      expect(res.body.error).toBe('Failed to sync Gmail messages');
+
+      // Crucial check: the valid connection was NOT pruned!
+      const { rows } = await pool.query('SELECT * FROM gmail_connections WHERE user_id = $1', ['user_A']);
+      expect(rows).toHaveLength(1);
+
+      const statusRes = await request(app)
+        .get('/api/gmail/status')
+        .set('Authorization', 'Bearer user_A');
+      expect(statusRes.status).toBe(200);
+      expect(statusRes.body.connected).toBe(true);
+    });
+
+    it('prunes dead connection and returns 404 when Gmail API returns 401 UNAUTHENTICATED', async () => {
+      await pool.query(
+        `
+        INSERT INTO gmail_connections (
+          id, user_id, google_email, access_token, refresh_token, expiry_date
+        ) VALUES ($1, $2, $3, $4, $5, $6)
+        `,
+        [randomUUID(), 'user_A', 'userA@vitstudent.ac.in', 'token_A', 'refresh_A', 1700000000],
+      );
+
+      const api401Err = Object.assign(new Error('Request had invalid authentication credentials.'), {
+        code: 401,
+        status: 401,
+        response: {
+          status: 401,
+          data: {
+            error: {
+              code: 401,
+              message: 'Request had invalid authentication credentials. Expected OAuth 2 access token, login cookie or other valid authentication credential.',
+              status: 'UNAUTHENTICATED',
+            },
+          },
+        },
+      });
+      mockList.mockRejectedValueOnce(api401Err);
+
+      const res = await request(app)
+        .post('/api/gmail/sync')
+        .set('Authorization', 'Bearer user_A');
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('Gmail credentials expired or access revoked. Please reconnect your account.');
+
+      const { rows } = await pool.query('SELECT * FROM gmail_connections WHERE user_id = $1', ['user_A']);
+      expect(rows).toHaveLength(0);
+    });
+
+    it('database deletion failure does NOT hide original OAuth failure', async () => {
+      await pool.query(
+        `
+        INSERT INTO gmail_connections (
+          id, user_id, google_email, access_token, refresh_token, expiry_date
+        ) VALUES ($1, $2, $3, $4, $5, $6)
+        `,
+        [randomUUID(), 'user_A', 'userA@vitstudent.ac.in', 'token_A', 'refresh_A', 1700000000],
+      );
+
+      const authErr = Object.assign(new Error('invalid_grant: Token has been expired or revoked.'), {
+        code: 400,
+        response: { data: { error: 'invalid_grant', error_description: 'Token has been expired or revoked.' } },
+      });
+      mockList.mockRejectedValueOnce(authErr);
+
+      // Simulate pool.query failure during deletion
+      const origQuery = pool.query.bind(pool);
+      const spyPoolQuery = vi.spyOn(pool, 'query').mockImplementation(async (...args: unknown[]) => {
+        const sql = typeof args[0] === 'string' ? args[0] : (args[0] as { text?: string })?.text || '';
+        if (sql.includes('DELETE FROM gmail_connections')) {
+          throw new Error('Simulated database failure during pruning');
+        }
+        return (origQuery as (...a: unknown[]) => unknown)(...args);
+      });
+
+      try {
+        const res = await request(app)
+          .post('/api/gmail/sync')
+          .set('Authorization', 'Bearer user_A');
+
+        // Request still safely returns 404 with reconnect message instead of crashing with 500
+        expect(res.status).toBe(404);
+        expect(res.body.error).toBe('Gmail credentials expired or access revoked. Please reconnect your account.');
+      } finally {
+        spyPoolQuery.mockRestore();
+      }
+    });
+
+    it('POST /api/gmail/recover prunes dead connection and returns 404 on OAuth credential failure', async () => {
+      await pool.query(
+        `
+        INSERT INTO gmail_connections (
+          id, user_id, google_email, access_token, refresh_token, expiry_date
+        ) VALUES ($1, $2, $3, $4, $5, $6)
+        `,
+        [randomUUID(), 'user_A', 'userA@vitstudent.ac.in', 'token_A', 'refresh_A', 1700000000],
+      );
+
+      const authErr = Object.assign(new Error('invalid_grant: Token has been expired or revoked.'), {
+        code: 400,
+        response: { data: { error: 'invalid_grant', error_description: 'Token has been expired or revoked.' } },
+      });
+      mockList.mockRejectedValueOnce(authErr);
+
+      const res = await request(app)
+        .post('/api/gmail/recover')
+        .set('Authorization', 'Bearer user_A');
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('Gmail credentials expired or access revoked. Please reconnect your account.');
+
+      const { rows } = await pool.query('SELECT * FROM gmail_connections WHERE user_id = $1', ['user_A']);
+      expect(rows).toHaveLength(0);
+    });
+
+    describe('isOAuthCredentialError helper', () => {
+      it('correctly identifies OAuth token endpoint errors', () => {
+        expect(isOAuthCredentialError({ response: { data: { error: 'invalid_grant' } } })).toBe(true);
+        expect(isOAuthCredentialError({ response: { data: { error: 'unauthorized_client' } } })).toBe(true);
+        expect(isOAuthCredentialError(new Error('invalid_grant: Bad Request'))).toBe(true);
+        expect(isOAuthCredentialError(new Error('unauthorized_client'))).toBe(true);
+      });
+
+      it('correctly identifies Google Resource API UNAUTHENTICATED errors', () => {
+        expect(isOAuthCredentialError({ response: { data: { error: { status: 'UNAUTHENTICATED' } } } })).toBe(true);
+        expect(isOAuthCredentialError(new Error('Request had invalid authentication credentials.'))).toBe(true);
+      });
+
+      it('safely rejects ordinary non-auth API errors', () => {
+        expect(isOAuthCredentialError({ code: 400, response: { data: { error: { status: 'INVALID_ARGUMENT' } } } })).toBe(false);
+        expect(isOAuthCredentialError(new Error('Invalid query syntax'))).toBe(false);
+        expect(isOAuthCredentialError({ status: 500, message: 'Internal Server Error' })).toBe(false);
+        expect(isOAuthCredentialError({ status: 404, message: 'Message not found' })).toBe(false);
+        expect(isOAuthCredentialError({ status: 429, message: 'User-rate limit exceeded' })).toBe(false);
+        expect(isOAuthCredentialError(null)).toBe(false);
+        expect(isOAuthCredentialError(undefined)).toBe(false);
+      });
     });
   });
 });

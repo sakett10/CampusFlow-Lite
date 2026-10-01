@@ -27,6 +27,7 @@ async function migrate() {
         source_message_id TEXT,
         source_sender TEXT,
         source_subject TEXT,
+        source_type TEXT NOT NULL DEFAULT 'institutional' CHECK (source_type IN ('institutional', 'gmail_personal')),
         status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'published', 'rejected', 'archived')) DEFAULT 'pending',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -41,9 +42,9 @@ async function migrate() {
       CREATE INDEX IF NOT EXISTS idx_notices_created_by ON notices(created_by_user_id);
       CREATE INDEX IF NOT EXISTS idx_notices_source_connection ON notices(source_connection_id);
 
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_notices_source_account_msg 
-      ON notices(source_account_email, source_message_id) 
-      WHERE source_message_id IS NOT NULL AND source_account_email IS NOT NULL;
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_notices_user_msg 
+      ON notices(created_by_user_id, source_message_id) 
+      WHERE source_message_id IS NOT NULL;
     `);
 
     console.log('Notices schema created successfully.');

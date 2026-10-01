@@ -657,7 +657,7 @@ export const noticesService = {
     }
 
     try {
-      const { rows: attRows } = await db.query(
+      const { rows: attRows } = await pool.query(
         `SELECT id, notice_id, filename, mime_type, size_bytes, created_at
          FROM notice_attachments
          WHERE notice_id = $1

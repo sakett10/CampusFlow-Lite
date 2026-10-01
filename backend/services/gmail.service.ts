@@ -434,10 +434,65 @@ export async function processNoticeAttachments(
 }
 
 export class GmailNotConnectedError extends Error {
-  constructor(message = 'Gmail account is not connected') {
+  public readonly isCredentialFailure: boolean;
+
+  constructor(message = 'Gmail account is not connected', isCredentialFailure = false) {
     super(message);
     this.name = 'GmailNotConnectedError';
+    this.isCredentialFailure = isCredentialFailure;
   }
+}
+
+/**
+ * Distinguishes confirmed OAuth credential failures (expired refresh token, revoked access,
+ * unauthorized client) from unrelated Gmail API errors (e.g. invalid query 400, rate limits 429, 500/503).
+ */
+export function isOAuthCredentialError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+
+  const errorObj = err as {
+    message?: string;
+    response?: {
+      status?: number;
+      data?: {
+        error?: string | { code?: number; message?: string; status?: string };
+        error_description?: string;
+      };
+    };
+    code?: number | string;
+    status?: number;
+  };
+
+  const dataError = errorObj.response?.data?.error;
+
+  // 1. Google OAuth Token Endpoint returns string error in response.data.error:
+  // e.g. { error: 'invalid_grant', error_description: 'Token has been expired or revoked.' }
+  // or { error: 'unauthorized_client', error_description: 'Unauthorized client' }
+  if (typeof dataError === 'string') {
+    if (dataError === 'invalid_grant' || dataError === 'unauthorized_client') {
+      return true;
+    }
+  }
+
+  // 2. Google Resource API returns structured error object in response.data.error:
+  // e.g. { error: { code: 401, message: 'Request had invalid authentication credentials...', status: 'UNAUTHENTICATED' } }
+  if (typeof dataError === 'object' && dataError !== null) {
+    if (dataError.status === 'UNAUTHENTICATED') {
+      return true;
+    }
+  }
+
+  // 3. Inspect error message (GaxiosError combines message and error_description):
+  const message = typeof errorObj.message === 'string' ? errorObj.message : '';
+  if (
+    message.includes('invalid_grant') ||
+    message.includes('unauthorized_client') ||
+    message.includes('invalid authentication credentials')
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 export const isGmailMessageProcessed = async (
@@ -824,15 +879,28 @@ export async function recoverHistoricalGmailMessages(
   const boundedLimit = Math.min(Math.max(requestedMax, 1), MAX_RECOVERY_COUNT);
 
   // 1. Query Gmail API for the bounded date window first
-  const listResponse = (await gmail.users.messages.list({
-    userId: 'me',
-    q,
-    maxResults: boundedLimit,
-  })) as {
-    data: {
-      messages?: Array<{ id?: string | null }>;
+  let listResponse: { data: { messages?: Array<{ id?: string | null }> } };
+  try {
+    listResponse = (await gmail.users.messages.list({
+      userId: 'me',
+      q,
+      maxResults: boundedLimit,
+    })) as {
+      data: {
+        messages?: Array<{ id?: string | null }>;
+      };
     };
-  };
+  } catch (apiErr: unknown) {
+    if (isOAuthCredentialError(apiErr)) {
+      try {
+        await pool.query('DELETE FROM gmail_connections WHERE user_id = $1', [userId]);
+      } catch (delErr) {
+        console.error('Failed to prune expired gmail connection:', delErr);
+      }
+      throw new GmailNotConnectedError('Gmail credentials expired or access revoked. Please reconnect your account.', true);
+    }
+    throw apiErr;
+  }
 
   const candidateMessages = (listResponse.data.messages || []).slice(0, boundedLimit);
 
@@ -1177,9 +1245,13 @@ export const syncGmailMessagesForUser = async (
       rawMessages.push(...pageMessages);
       pageToken = listResponse.data.nextPageToken || undefined;
     } catch (apiErr: unknown) {
-      const err = apiErr as { message?: string; code?: number; status?: number };
-      if (err?.message?.includes('invalid_grant') || err?.code === 400 || err?.code === 401 || err?.status === 401) {
-        throw new GmailNotConnectedError('Gmail credentials expired or access revoked by user. Please reconnect your account.');
+      if (isOAuthCredentialError(apiErr)) {
+        try {
+          await pool.query('DELETE FROM gmail_connections WHERE user_id = $1', [userId]);
+        } catch (delErr) {
+          console.error('Failed to prune expired gmail connection:', delErr);
+        }
+        throw new GmailNotConnectedError('Gmail credentials expired or access revoked. Please reconnect your account.', true);
       }
       throw apiErr;
     }

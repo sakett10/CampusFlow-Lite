@@ -27,6 +27,30 @@ const createTables = async () => {
         description TEXT,
         due_date TEXT,
         status TEXT NOT NULL CHECK (status IN ('PENDING', 'IN_PROGRESS', 'COMPLETED')),
+        due_time TEXT,
+        reminder TEXT,
+        priority TEXT DEFAULT 'medium',
+        source TEXT DEFAULT 'manual',
+        source_id TEXT,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        completed_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS campus_items (
+        id UUID PRIMARY KEY,
+        title TEXT,
+        type TEXT,
+        description TEXT,
+        date TEXT,
+        start_time TEXT,
+        end_time TEXT,
+        registration_deadline TEXT,
+        venue TEXT,
+        eligibility TEXT,
+        organizer TEXT,
+        important_actions JSONB,
+        source_text TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
