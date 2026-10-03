@@ -766,7 +766,7 @@ describe('GET /api/gmail/messages/:messageId', () => {
       expect(noticesB).toHaveLength(1);
     });
 
-    it('2. disconnect with purgeData: true deletes connection, campus_emails, and processed_gmail_messages for user while preserving assignments, notices, and user B', async () => {
+    it('2. disconnect with purgeData: true deletes connection, campus_emails, and processed_gmail_messages for user while preserving manual assignments, institutional notices, and user B', async () => {
       const userA = 'user_A';
       const userB = 'user_B';
 
@@ -794,12 +794,13 @@ describe('GET /api/gmail/messages/:messageId', () => {
         [randomUUID(), userA, randomUUID(), userB],
       );
 
-      // Insert assignments for A and B
+      // Insert assignments for A (both manual and gmail-derived) and B
       await pool.query(
         `INSERT INTO assignments (id, user_id, title, status, source)
-         VALUES ($1, $2, 'Assignment A', 'PENDING', 'gmail'),
-                ($3, $4, 'Assignment B', 'PENDING', 'gmail')`,
-        [randomUUID(), userA, randomUUID(), userB],
+         VALUES ($1, $2, 'Assignment A (Manual)', 'PENDING', 'manual'),
+                ($3, $2, 'Assignment A (Gmail)', 'PENDING', 'gmail'),
+                ($4, $5, 'Assignment B', 'PENDING', 'gmail')`,
+        [randomUUID(), userA, randomUUID(), randomUUID(), userB],
       );
 
       // Insert notices for A and B
@@ -830,9 +831,10 @@ describe('GET /api/gmail/messages/:messageId', () => {
       const { rows: procA } = await pool.query('SELECT * FROM processed_gmail_messages WHERE user_id = $1', [userA]);
       expect(procA).toHaveLength(0);
 
-      // User A assignments and notices PRESERVED
+      // User A manual assignments and institutional notices PRESERVED (Gmail-derived assignment purged)
       const { rows: assignA } = await pool.query('SELECT * FROM assignments WHERE user_id = $1', [userA]);
       expect(assignA).toHaveLength(1);
+      expect(assignA[0].source).toBe('manual');
       const { rows: noticesA } = await pool.query('SELECT * FROM notices WHERE created_by_user_id = $1', [userA]);
       expect(noticesA).toHaveLength(1);
 

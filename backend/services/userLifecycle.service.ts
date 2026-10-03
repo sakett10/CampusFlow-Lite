@@ -7,6 +7,7 @@ import {
 } from './gmail.service.js';
 import { decryptToken } from './crypto.service.js';
 import { SYSTEM_INSTITUTIONAL_USER_ID } from './notices.service.js';
+import { getObjectStorageDriver } from './objectStorage.service.js';
 
 export interface UserDeletionPurgeStats {
   gmailConnection: boolean;
@@ -19,6 +20,8 @@ export interface UserDeletionPurgeStats {
   notificationDismissals: number;
   noticesDeleted: number;
   noticesPreserved: number;
+  pushSubscriptions?: number;
+  userPreferences?: number;
 }
 
 export interface UserDeletionResult {
@@ -65,6 +68,8 @@ export async function deleteUserData(userId: string): Promise<UserDeletionResult
     notificationDismissals: 0,
     noticesDeleted: 0,
     noticesPreserved: 0,
+    pushSubscriptions: 0,
+    userPreferences: 0,
   };
 
   try {
@@ -124,6 +129,8 @@ export async function deleteUserData(userId: string): Promise<UserDeletionResult
     }
 
     // 3. Perform database deletion in a single atomic transaction
+    const storageKeysToDelete: string[] = [];
+
     try {
       await lockClient.query('BEGIN');
 
@@ -189,47 +196,137 @@ export async function deleteUserData(userId: string): Promise<UserDeletionResult
         [cleanUserId],
       );
 
-      // 3.10. Delete notifications referencing unpublished notices of this user
-      await lockClient.query(
+      // (CF-SEC-16) 3.10. Delete user push subscriptions and preferences
+      const { rowCount: psCount } = await lockClient.query(
+        'DELETE FROM push_subscriptions WHERE user_id = $1',
+        [cleanUserId],
+      );
+      purgeStats.pushSubscriptions = psCount ?? 0;
+
+      const { rowCount: upCount } = await lockClient.query(
+        'DELETE FROM user_preferences WHERE user_id = $1',
+        [cleanUserId],
+      );
+      purgeStats.userPreferences = upCount ?? 0;
+
+      // (CF-SEC-03 & CF-SEC-08) 3.11. Notice handling:
+      // Identify storage keys for notice attachments to be deleted:
+      // - personal notices (source_type = 'gmail_personal')
+      // - unpublished institutional notices (status != 'published')
+      // - any other attachments owned by this user not attached to preserved institutional notices
+      const { rows: keyRows } = await lockClient.query<{ storage_key: string }>(
         `
-        DELETE FROM notifications
+        SELECT DISTINCT storage_key FROM notice_attachments
         WHERE notice_id IN (
-          SELECT id FROM notices WHERE created_by_user_id = $1 AND status != 'published'
+          SELECT id FROM notices
+          WHERE created_by_user_id = $1
+            AND (source_type = 'gmail_personal' OR status != 'published')
+        )
+        OR (
+          user_id = $1
+          AND notice_id NOT IN (
+            SELECT id FROM notices
+            WHERE status = 'published' AND source_type = 'institutional'
+          )
         )
         `,
         [cleanUserId],
       );
-
-      // 3.11. Delete unpublished / draft / pending / rejected / archived notices created by this user
-      const { rowCount: nDelCount } = await lockClient.query(
-        `
-        DELETE FROM notices
-        WHERE created_by_user_id = $1 AND status != 'published'
-        `,
-        [cleanUserId],
-      );
-      purgeStats.noticesDeleted = nDelCount ?? 0;
+      for (const r of keyRows) {
+        if (r.storage_key) {
+          storageKeysToDelete.push(r.storage_key);
+        }
+      }
 
       // 3.12. Institutional preservation:
-      // Published campus notices are university-wide official bulletins.
-      // Re-assign them to the stable institutional system user so they remain visible
-      // in campus noticeboards, feeds, and notifications without referencing the deleted Clerk user.
+      // Published campus institutional notices are official university bulletins.
+      // Re-assign them and their attachments to the stable institutional system user ('admin')
+      // so they remain visible across the university without referencing the deleted user.
+      // NEVER re-assign gmail_personal notices to admin!
+      await lockClient.query(
+        `
+        UPDATE notice_attachments
+        SET user_id = $2
+        WHERE user_id = $1
+          AND notice_id IN (
+            SELECT id FROM notices
+            WHERE created_by_user_id = $1 AND status = 'published' AND source_type = 'institutional'
+          )
+        `,
+        [cleanUserId, SYSTEM_INSTITUTIONAL_USER_ID],
+      );
+
       const { rowCount: nPreservedCount } = await lockClient.query(
         `
         UPDATE notices
         SET created_by_user_id = $2,
             source_connection_id = NULL
-        WHERE created_by_user_id = $1 AND status = 'published'
+        WHERE created_by_user_id = $1 AND status = 'published' AND source_type = 'institutional'
         `,
         [cleanUserId, SYSTEM_INSTITUTIONAL_USER_ID],
       );
       purgeStats.noticesPreserved = nPreservedCount ?? 0;
+
+      // 3.13. Delete notifications referencing notices being deleted
+      await lockClient.query(
+        `
+        DELETE FROM notifications
+        WHERE notice_id IN (
+          SELECT id FROM notices
+          WHERE created_by_user_id = $1
+            AND (source_type = 'gmail_personal' OR status != 'published')
+        )
+        `,
+        [cleanUserId],
+      );
+
+      // 3.14. Delete notices created by this user that are NOT preserved published institutional notices.
+      // This includes all personal Gmail notices and unpublished drafts.
+      const { rowCount: nDelCount } = await lockClient.query(
+        `
+        DELETE FROM notices
+        WHERE created_by_user_id = $1
+          AND (source_type = 'gmail_personal' OR status != 'published')
+        `,
+        [cleanUserId],
+      );
+      purgeStats.noticesDeleted = nDelCount ?? 0;
+
+      // 3.15. Delete any un-reassigned attachments for this user
+      await lockClient.query(
+        'DELETE FROM notice_attachments WHERE user_id = $1',
+        [cleanUserId],
+      );
 
       await lockClient.query('COMMIT');
     } catch (dbError) {
       await lockClient.query('ROLLBACK');
       console.error('Database transaction failed during user deletion:', dbError instanceof Error ? dbError.message : 'Database error');
       throw dbError;
+    }
+
+    // 4. Post-commit storage cleanup:
+    // Safely delete objects using the existing ObjectStorageDriver.
+    // Verify each storage key is not referenced by any surviving attachment row.
+    // If deletion fails, log clearly without rolling back database work.
+    if (storageKeysToDelete.length > 0) {
+      const driver = getObjectStorageDriver();
+      for (const key of storageKeysToDelete) {
+        try {
+          const { rows: refRows } = await lockClient.query(
+            'SELECT 1 FROM notice_attachments WHERE storage_key = $1 LIMIT 1',
+            [key],
+          );
+          if (refRows.length === 0) {
+            await driver.delete(key);
+          }
+        } catch (storageErr) {
+          console.error(
+            `Failed to delete object from storage after user deletion [key=${key}, userId=${cleanUserId}]:`,
+            storageErr instanceof Error ? storageErr.message : storageErr,
+          );
+        }
+      }
     }
 
     return {

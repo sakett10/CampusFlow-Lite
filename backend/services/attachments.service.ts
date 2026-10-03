@@ -150,14 +150,21 @@ export const attachmentsService = {
     const existing = await attachmentsService.getAttachmentById(attachmentId, noticeId);
     if (!existing) return false;
 
-    const driver = getObjectStorageDriver();
+    await pool.query('DELETE FROM notice_attachments WHERE id = $1', [attachmentId]);
+
     try {
-      await driver.delete(existing.storageKey);
+      const { rows } = await pool.query(
+        'SELECT 1 FROM notice_attachments WHERE storage_key = $1 LIMIT 1',
+        [existing.storageKey],
+      );
+      if (rows.length === 0) {
+        const driver = getObjectStorageDriver();
+        await driver.delete(existing.storageKey);
+      }
     } catch (err) {
       console.warn('Failed to delete object from storage:', err);
     }
 
-    await pool.query('DELETE FROM notice_attachments WHERE id = $1', [attachmentId]);
     return true;
   },
 };

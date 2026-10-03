@@ -162,11 +162,13 @@ export function createTestPool(): pg.Pool {
 
     CREATE TABLE notice_suppressions (
       id UUID PRIMARY KEY,
+      user_id TEXT NOT NULL DEFAULT '',
+      source_type TEXT NOT NULL DEFAULT 'institutional' CHECK (source_type IN ('institutional', 'gmail_personal')),
       source_account_email TEXT,
-      source_message_id TEXT,
+      source_message_id TEXT NOT NULL,
       normalized_fingerprint TEXT,
       suppressed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      CONSTRAINT uq_notice_suppression_account_msg UNIQUE (source_account_email, source_message_id)
+      CONSTRAINT uq_notice_suppressions_scope_msg UNIQUE (source_type, user_id, source_message_id)
     );
 
     CREATE TABLE notice_attachments (

@@ -934,19 +934,25 @@ export async function recoverHistoricalGmailMessages(
         candidate.source?.sender,
       );
 
-      const suppressed = await isNoticeSuppressed(conn.google_email, msgId, fingerprint);
+      const isPersonalAccount = isPersonalAccountEmail(conn.google_email);
+      const isStudentSender = isStudentInstitutionSender(candidate.source?.sender || '');
+      const isInstitutionalBroadcast = isAuthorizedReviewer && !isPersonalAccount && !isStudentSender;
+      const syncSourceType: 'institutional' | 'gmail_personal' =
+        isInstitutionalBroadcast ? 'institutional' : 'gmail_personal';
+
+      const suppressed = await isNoticeSuppressed(
+        conn.google_email,
+        msgId,
+        fingerprint,
+        userId,
+        syncSourceType,
+      );
       if (suppressed) {
         stats.skippedCount++;
         continue;
       }
 
       try {
-        const isPersonalAccount = isPersonalAccountEmail(conn.google_email);
-        const isStudentSender = isStudentInstitutionSender(candidate.source?.sender || '');
-        const isInstitutionalBroadcast = isAuthorizedReviewer && !isPersonalAccount && !isStudentSender;
-        const syncSourceType: 'institutional' | 'gmail_personal' =
-          isInstitutionalBroadcast ? 'institutional' : 'gmail_personal';
-
         await noticesService.createFromCandidate(userId, candidate, {
           connectionId: conn.id,
           accountEmail: conn.google_email,
@@ -1052,15 +1058,21 @@ export async function recoverHistoricalGmailMessages(
         candidate.source?.sender,
       );
 
-      const suppressed = await isNoticeSuppressed(conn.google_email, msgId, fingerprint);
+      const isPersonalAccount = isPersonalAccountEmail(conn.google_email);
+      const isStudentSender = isStudentInstitutionSender(candidate.source?.sender || '');
+      const isInstitutionalBroadcast = isAuthorizedReviewer && !isPersonalAccount && !isStudentSender;
+      const syncSourceType: 'institutional' | 'gmail_personal' =
+        isInstitutionalBroadcast ? 'institutional' : 'gmail_personal';
+
+      const suppressed = await isNoticeSuppressed(
+        conn.google_email,
+        msgId,
+        fingerprint,
+        userId,
+        syncSourceType,
+      );
       if (!suppressed) {
         try {
-          const isPersonalAccount = isPersonalAccountEmail(conn.google_email);
-          const isStudentSender = isStudentInstitutionSender(candidate.source?.sender || '');
-          const isInstitutionalBroadcast = isAuthorizedReviewer && !isPersonalAccount && !isStudentSender;
-          const syncSourceType: 'institutional' | 'gmail_personal' =
-            isInstitutionalBroadcast ? 'institutional' : 'gmail_personal';
-
           const createdNotice = await noticesService.createFromCandidate(userId, candidate, {
             connectionId: conn.id,
             accountEmail: conn.google_email,
@@ -1289,16 +1301,22 @@ export const syncGmailMessagesForUser = async (
       candidate.source.sender,
     );
 
-    const suppressed = await isNoticeSuppressed(conn.google_email, email.sourceMessageId, fingerprint);
+    const isPersonalAccount = isPersonalAccountEmail(conn.google_email);
+    const isStudentSender = isStudentInstitutionSender(candidate.source?.sender || '');
+    const isInstitutionalBroadcast = isAuthorizedReviewer && !isPersonalAccount && !isStudentSender;
+    const syncSourceType: 'institutional' | 'gmail_personal' =
+      isInstitutionalBroadcast ? 'institutional' : 'gmail_personal';
+
+    const suppressed = await isNoticeSuppressed(
+      conn.google_email,
+      email.sourceMessageId,
+      fingerprint,
+      userId,
+      syncSourceType,
+    );
     if (suppressed) return false;
 
     try {
-      const isPersonalAccount = isPersonalAccountEmail(conn.google_email);
-      const isStudentSender = isStudentInstitutionSender(candidate.source?.sender || '');
-      const isInstitutionalBroadcast = isAuthorizedReviewer && !isPersonalAccount && !isStudentSender;
-      const syncSourceType: 'institutional' | 'gmail_personal' =
-        isInstitutionalBroadcast ? 'institutional' : 'gmail_personal';
-
       const createdNotice = await noticesService.createFromCandidate(userId, candidate, {
         connectionId: conn.id,
         accountEmail: conn.google_email,
@@ -1611,15 +1629,21 @@ export const syncGmailMessagesForUser = async (
               candidate.source?.sender,
             );
 
-            const suppressed = await isNoticeSuppressed(conn.google_email, msgId, fingerprint);
+            const isPersonalAccount = isPersonalAccountEmail(conn.google_email);
+            const isStudentSender = isStudentInstitutionSender(candidate.source?.sender || '');
+            const isInstitutionalBroadcast = isAuthorizedReviewer && !isPersonalAccount && !isStudentSender;
+            const syncSourceType: 'institutional' | 'gmail_personal' =
+              isInstitutionalBroadcast ? 'institutional' : 'gmail_personal';
+
+            const suppressed = await isNoticeSuppressed(
+              conn.google_email,
+              msgId,
+              fingerprint,
+              userId,
+              syncSourceType,
+            );
             if (!suppressed) {
               try {
-                const isPersonalAccount = isPersonalAccountEmail(conn.google_email);
-                const isStudentSender = isStudentInstitutionSender(candidate.source?.sender || '');
-                const isInstitutionalBroadcast = isAuthorizedReviewer && !isPersonalAccount && !isStudentSender;
-                const syncSourceType: 'institutional' | 'gmail_personal' =
-                  isInstitutionalBroadcast ? 'institutional' : 'gmail_personal';
-
                 const createdNotice = await noticesService.createFromCandidate(userId, candidate, {
                   connectionId: conn.id,
                   accountEmail: conn.google_email,
@@ -1791,12 +1815,73 @@ export async function disconnectGmailForUser(
     }
 
     // 2. Perform local database cleanup in an atomic transaction
+    const storageKeysToDelete: string[] = [];
+
     try {
       await lockClient.query('BEGIN');
 
       await lockClient.query('DELETE FROM gmail_connections WHERE user_id = $1', [userId]);
 
       if (purgeData) {
+        // Collect storage keys for personal notice attachments before deleting rows
+        const { rows: keyRows } = await lockClient.query<{ storage_key: string }>(
+          `
+          SELECT DISTINCT storage_key FROM notice_attachments
+          WHERE notice_id IN (
+            SELECT id FROM notices
+            WHERE created_by_user_id = $1 AND source_type = 'gmail_personal'
+          )
+          `,
+          [userId],
+        );
+        for (const r of keyRows) {
+          if (r.storage_key) {
+            storageKeysToDelete.push(r.storage_key);
+          }
+        }
+
+        // Delete Gmail-derived tasks/assignments:
+        // 1. source IN ('gmail', 'email')
+        // 2. source = 'notice' where the notice is a personal Gmail notice of this user
+        // (Strictly preserves manual assignments and tasks converted from institutional notices)
+        await lockClient.query(
+          `
+          DELETE FROM assignments
+          WHERE user_id = $1
+            AND (
+              source IN ('gmail', 'email')
+              OR (
+                source = 'notice' AND source_id IN (
+                  SELECT id::text FROM notices
+                  WHERE created_by_user_id = $1 AND source_type = 'gmail_personal'
+                )
+              )
+            )
+          `,
+          [userId],
+        );
+
+        // Delete notifications referencing personal notices
+        await lockClient.query(
+          `
+          DELETE FROM notifications
+          WHERE notice_id IN (
+            SELECT id FROM notices
+            WHERE created_by_user_id = $1 AND source_type = 'gmail_personal'
+          )
+          `,
+          [userId],
+        );
+
+        // Delete personal Gmail notices (cascades to notice_attachments)
+        await lockClient.query(
+          `
+          DELETE FROM notices
+          WHERE created_by_user_id = $1 AND source_type = 'gmail_personal'
+          `,
+          [userId],
+        );
+
         await lockClient.query('DELETE FROM campus_emails WHERE user_id = $1', [userId]);
         await lockClient.query('DELETE FROM processed_gmail_messages WHERE user_id = $1', [userId]);
       }
@@ -1809,6 +1894,27 @@ export async function disconnectGmailForUser(
         // Ignore rollback failure if connection was severed
       }
       throw dbError;
+    }
+
+    // Post-commit storage cleanup:
+    if (storageKeysToDelete.length > 0) {
+      const driver = getObjectStorageDriver();
+      for (const key of storageKeysToDelete) {
+        try {
+          const { rows: refRows } = await lockClient.query(
+            'SELECT 1 FROM notice_attachments WHERE storage_key = $1 LIMIT 1',
+            [key],
+          );
+          if (refRows.length === 0) {
+            await driver.delete(key);
+          }
+        } catch (storageErr) {
+          console.error(
+            `Failed to delete attachment object from storage after Gmail purge [key=${key}, userId=${userId}]:`,
+            storageErr instanceof Error ? storageErr.message : storageErr,
+          );
+        }
+      }
     }
 
     return {

@@ -27,6 +27,7 @@ import { mapRowToAssignment, assignmentsService } from './assignments.service.js
 import { parseNaturalDate } from './deadlineParser.service.js';
 import { isReviewerUserId } from '../middleware/requireAuth.js';
 import { isStudentInstitutionSender, isGenericMailboxDomain } from '../config/institutions.js';
+import { getObjectStorageDriver } from './objectStorage.service.js';
 
 export const SYSTEM_INSTITUTIONAL_USER_ID = 'admin';
 
@@ -126,27 +127,105 @@ export function isPersonalOrNonNotice(candidate: {
 }
 
 export async function isNoticeSuppressed(
-  accountEmail: string,
+  accountEmail?: string | null,
   messageId?: string | null,
   fingerprint?: string | null,
+  userId?: string | null,
+  sourceType?: 'institutional' | 'gmail_personal' | null,
 ): Promise<boolean> {
-  if (messageId) {
+  // 1. Institutional global suppression check:
+  // Institutional suppressions (source_type = 'institutional') apply globally campus-wide.
+  if (messageId && messageId.trim()) {
     const { rows } = await pool.query(
-      'SELECT id FROM notice_suppressions WHERE source_account_email = $1 AND source_message_id = $2 LIMIT 1',
-      [accountEmail, messageId],
+      `SELECT id FROM notice_suppressions
+       WHERE source_type = 'institutional'
+         AND source_message_id = $1
+       LIMIT 1`,
+      [messageId.trim()],
     );
     if (rows.length > 0) return true;
   }
 
-  if (fingerprint) {
+  if (fingerprint && fingerprint.trim()) {
     const { rows } = await pool.query(
-      'SELECT id FROM notice_suppressions WHERE normalized_fingerprint = $1 LIMIT 1',
-      [fingerprint],
+      `SELECT id FROM notice_suppressions
+       WHERE source_type = 'institutional'
+         AND normalized_fingerprint = $1
+       LIMIT 1`,
+      [fingerprint.trim()],
     );
     if (rows.length > 0) return true;
+  }
+
+  // 2. Personal user-scoped suppression check:
+  // If authenticated userId is provided, check if this specific user suppressed the message or fingerprint.
+  if (userId && userId.trim()) {
+    const cleanUserId = userId.trim();
+
+    if (messageId && messageId.trim()) {
+      const { rows } = await pool.query(
+        `SELECT id FROM notice_suppressions
+         WHERE source_type = 'gmail_personal'
+           AND user_id = $1
+           AND source_message_id = $2
+         LIMIT 1`,
+        [cleanUserId, messageId.trim()],
+      );
+      if (rows.length > 0) return true;
+    }
+
+    if (fingerprint && fingerprint.trim()) {
+      const { rows } = await pool.query(
+        `SELECT id FROM notice_suppressions
+         WHERE source_type = 'gmail_personal'
+           AND user_id = $1
+           AND normalized_fingerprint = $2
+         LIMIT 1`,
+        [cleanUserId, fingerprint.trim()],
+      );
+      if (rows.length > 0) return true;
+    }
   }
 
   return false;
+}
+
+export async function suppressNotice(params: {
+  userId?: string | null;
+  sourceType?: 'institutional' | 'gmail_personal';
+  accountEmail?: string | null;
+  messageId?: string | null;
+  fingerprint?: string | null;
+}): Promise<void> {
+  const sourceType: 'institutional' | 'gmail_personal' = params.sourceType || 'institutional';
+  let userId = '';
+
+  if (sourceType === 'gmail_personal') {
+    if (!params.userId || !params.userId.trim()) {
+      throw new Error('Personal notice suppression requires an authenticated userId');
+    }
+    userId = params.userId.trim();
+  }
+
+  // When source_message_id is absent (e.g. manual notices), synthesize a deterministic identifier (or fallback UUID)
+  const sourceMessageId = params.messageId && params.messageId.trim()
+    ? params.messageId.trim()
+    : (params.fingerprint && params.fingerprint.trim() ? `fp:${params.fingerprint.trim()}` : randomUUID());
+
+  const accountEmail = params.accountEmail || null;
+  const fingerprint = params.fingerprint && params.fingerprint.trim() ? params.fingerprint.trim() : null;
+
+  await pool.query(
+    `
+    INSERT INTO notice_suppressions (id, user_id, source_type, source_account_email, source_message_id, normalized_fingerprint, suppressed_at)
+    VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+    ON CONFLICT (source_type, user_id, source_message_id) DO UPDATE SET
+      normalized_fingerprint = COALESCE(EXCLUDED.normalized_fingerprint, notice_suppressions.normalized_fingerprint),
+      source_account_email = COALESCE(EXCLUDED.source_account_email, notice_suppressions.source_account_email),
+      suppressed_at = CURRENT_TIMESTAMP
+    `,
+    [randomUUID(), userId, sourceType, accountEmail, sourceMessageId, fingerprint],
+  );
 }
 
 const ALLOWED_TRANSITIONS: Record<NoticeStatus, NoticeStatus[]> = {
@@ -255,6 +334,7 @@ export interface NoticeFilters {
 }
 
 export const noticesService = {
+  suppressNotice,
   createFromCandidate: async (
     userId: string,
     candidate: NoticeCandidate,
@@ -306,6 +386,8 @@ export const noticesService = {
       sourceMeta?.accountEmail || 'manual',
       validated.source.messageId,
       fingerprint,
+      userId,
+      sourceType,
     );
     if (isSuppressed) {
       throw new NoticeSuppressedError('Notice was previously deleted or suppressed');
@@ -845,40 +927,56 @@ export const noticesService = {
 
     // 2. Persist suppression record
     try {
-      if (notice.source_account_email && notice.source_message_id) {
-        await pool.query(
-          `
-          INSERT INTO notice_suppressions (id, source_account_email, source_message_id, normalized_fingerprint, suppressed_at)
-          VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
-          ON CONFLICT (source_account_email, source_message_id) DO UPDATE SET
-            normalized_fingerprint = EXCLUDED.normalized_fingerprint,
-            suppressed_at = CURRENT_TIMESTAMP
-          `,
-          [randomUUID(), notice.source_account_email, notice.source_message_id, fingerprint],
-        );
-      } else {
-        await pool.query(
-          `
-          INSERT INTO notice_suppressions (id, source_account_email, source_message_id, normalized_fingerprint, suppressed_at)
-          VALUES ($1, 'manual', $2, $3, CURRENT_TIMESTAMP)
-          ON CONFLICT (source_account_email, source_message_id) DO NOTHING
-          `,
-          [randomUUID(), id, fingerprint],
-        );
-      }
+      await suppressNotice({
+        userId: null,
+        sourceType: 'institutional',
+        accountEmail: notice.source_account_email || 'manual',
+        messageId: notice.source_message_id || id,
+        fingerprint,
+      });
     } catch (suppressErr) {
       console.error('Failed to record notice suppression:', suppressErr);
     }
 
-    // 3. Delete referencing notifications
+    // 3. Collect storage keys for attachments of this notice before deletion
+    const { rows: attachRows } = await pool.query<{ storage_key: string }>(
+      'SELECT storage_key FROM notice_attachments WHERE notice_id = $1',
+      [id],
+    );
+    const storageKeys = attachRows.map((r) => r.storage_key).filter(Boolean);
+
+    // 4. Delete referencing notifications
     try {
       await pool.query('DELETE FROM notifications WHERE notice_id = $1', [id]);
     } catch {
       // Ignore if notifications table doesn't have the record
     }
 
-    // 4. Delete notice row from PostgreSQL
+    // 5. Delete notice row from PostgreSQL (cascades to notice_attachments)
     const { rowCount } = await pool.query('DELETE FROM notices WHERE id = $1', [id]);
+
+    // 6. Post-delete storage cleanup:
+    // If notice was successfully deleted, delete storage objects if not referenced elsewhere
+    if ((rowCount ?? 0) > 0 && storageKeys.length > 0) {
+      const driver = getObjectStorageDriver();
+      for (const key of storageKeys) {
+        try {
+          const { rows: refRows } = await pool.query(
+            'SELECT 1 FROM notice_attachments WHERE storage_key = $1 LIMIT 1',
+            [key],
+          );
+          if (refRows.length === 0) {
+            await driver.delete(key);
+          }
+        } catch (storageErr) {
+          console.error(
+            `Failed to delete attachment object from storage after notice deletion [key=${key}, noticeId=${id}]:`,
+            storageErr instanceof Error ? storageErr.message : storageErr,
+          );
+        }
+      }
+    }
+
     return (rowCount ?? 0) > 0;
   },
 
